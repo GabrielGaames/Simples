@@ -23,14 +23,15 @@
     <label class="btn" for="photo">📷 Tirar foto do cartão</label>
     <input id="photo" type="file" accept="image/*" capture="environment" />
     <img id="preview" alt="Prévia" />
-    <button id="scan" class="btn" disabled>Ler respostas</button>
+    <button id="scan" class="btn" disabled>Ler e corrigir respostas</button>
     <div id="status" class="status"></div>
   </div>
 
   <div class="card">
     <b>Gabarito oficial (opcional)</b>
     <p class="muted">Digite 40 letras. Pode ser <code>D A A A B...</code>, separado por vírgulas, ou tudo junto.</p>
-    <textarea id="key" placeholder="Ex.: DA AAB... ou D,A,A,A,B,..."></textarea>
+    <textarea id="key" placeholder="Ex.: D,A,A,A,B,..."></textarea>
+    <div id="keyInfo" class="status" style="display:block;margin-top:10px;background:#f3f4f6;color:#374151">Gabarito: 0/40 respostas.</div>
   </div>
 
   <div id="resultCard" class="card" style="display:none">
@@ -41,49 +42,135 @@
 </div>
 <script>
 const photo=document.querySelector('#photo'), preview=document.querySelector('#preview'), scanBtn=document.querySelector('#scan'), statusBox=document.querySelector('#status');
-const resultCard=document.querySelector('#resultCard'), questionsBox=document.querySelector('#questions'), summary=document.querySelector('#summary'), keyBox=document.querySelector('#key');
+const resultCard=document.querySelector('#resultCard'), questionsBox=document.querySelector('#questions'), summary=document.querySelector('#summary'), keyBox=document.querySelector('#key'), keyInfo=document.querySelector('#keyInfo');
 let file=null, lastResult=null;
+
+const KEY_STORAGE='eduscanner_gabarito_40';
+
+function parseKey(){
+  return keyBox.value.toUpperCase().replace(/[^A-E]/g,'').split('');
+}
+
+function updateKeyState(){
+  const key=parseKey();
+  localStorage.setItem(KEY_STORAGE,key.join(''));
+  keyInfo.style.display='block';
+  if(key.length===40){
+    keyInfo.className='status ok';
+    keyInfo.textContent='✓ Gabarito válido: 40/40 respostas. Ele ficará salvo neste aparelho.';
+  } else {
+    keyInfo.className='status error';
+    keyInfo.textContent=`Gabarito incompleto: ${key.length}/40 respostas. Informe exatamente 40 alternativas (A–E) para corrigir.`;
+  }
+  scanBtn.disabled=!file || key.length!==40;
+  if(lastResult && key.length===40) render(lastResult);
+}
+
+const savedKey=localStorage.getItem(KEY_STORAGE)||'';
+if(savedKey) keyBox.value=savedKey;
+updateKeyState();
 
 photo.addEventListener('change',()=>{
   file=photo.files?.[0]||null;
   if(!file)return;
-  preview.src=URL.createObjectURL(file); preview.style.display='block'; scanBtn.disabled=false;
-  statusBox.style.display='none'; resultCard.style.display='none';
+  if(preview.src && preview.src.startsWith('blob:')) URL.revokeObjectURL(preview.src);
+  preview.src=URL.createObjectURL(file);
+  preview.style.display='block';
+  statusBox.style.display='none';
+  resultCard.style.display='none';
+  lastResult=null;
+  updateKeyState();
 });
 
-function parseKey(){ return keyBox.value.toUpperCase().replace(/[^A-E]/g,'').split(''); }
 function render(data){
-  lastResult=data; const key=parseKey(); let correct=0, wrong=0, mult=0, blank=0;
+  lastResult=data;
+  const key=parseKey();
+  if(key.length!==40){
+    statusBox.className='status error';
+    statusBox.textContent=`Não foi possível corrigir: o gabarito tem ${key.length}/40 respostas.`;
+    statusBox.style.display='block';
+    resultCard.style.display='none';
+    return;
+  }
+
+  let correct=0, wrong=0, mult=0, blank=0;
   questionsBox.innerHTML='';
   data.questions.forEach(q=>{
-    const el=document.createElement('div'); el.className='q';
-    let label=q.answer|| (q.status==='MULT'?'ANULADA':'—');
+    const el=document.createElement('div');
+    el.className='q';
+    const expected=key[q.number-1];
+    let label=q.answer || (q.status==='MULT'?'ANULADA':'—');
+
     if(q.status==='MULT'){el.classList.add('mult'); mult++;}
     if(q.status==='BLANK'){el.classList.add('blank'); blank++;}
-    if(key.length===40){
-      const isCorrect=q.status==='OK' && q.answer===key[q.number-1];
-      if(isCorrect){correct++;el.classList.add('correct')}else{wrong++;el.classList.add('wrong')}
+
+    const isCorrect=q.status==='OK' && q.answer===expected;
+    if(isCorrect){
+      correct++;
+      el.classList.add('correct');
+    }else{
+      wrong++;
+      el.classList.add('wrong');
     }
-    el.innerHTML=`<b>Questão ${q.number}</b><span class="ans">${label}</span>`;
+
+    const detail=isCorrect ? '✓ CERTA' : `✗ ERRADA · correta: ${expected}`;
+    el.innerHTML=`<b>Questão ${q.number}</b><span class="ans">${label}</span><small style="display:block;margin-top:4px;font-weight:700">${detail}</small>`;
     questionsBox.appendChild(el);
   });
+
   summary.innerHTML='';
-  const pills=[`40 questões`,`Anuladas: ${mult}`,`Em branco: ${blank}`];
-  if(key.length===40){pills.push(`Acertos: ${correct}`,`Erros: ${wrong}`,`Nota: ${(correct/40*10).toFixed(1)}`)}
-  pills.forEach(t=>{const p=document.createElement('span');p.className='pill';p.textContent=t;summary.appendChild(p)});
+  const pills=[
+    `Acertos: ${correct}`,
+    `Erros: ${wrong}`,
+    `Anuladas: ${mult}`,
+    `Em branco: ${blank}`,
+    `Nota: ${(correct/40*10).toFixed(1)}`
+  ];
+  pills.forEach(t=>{
+    const p=document.createElement('span');
+    p.className='pill';
+    p.textContent=t;
+    summary.appendChild(p);
+  });
   resultCard.style.display='block';
+  resultCard.scrollIntoView({behavior:'smooth',block:'start'});
 }
-keyBox.addEventListener('input',()=>{if(lastResult)render(lastResult)});
+
+keyBox.addEventListener('input',updateKeyState);
 
 scanBtn.addEventListener('click',async()=>{
-  if(!file)return; scanBtn.disabled=true; scanBtn.textContent='Lendo...'; statusBox.style.display='none';
-  const form=new FormData(); form.append('file',file);
+  const key=parseKey();
+  if(!file)return;
+  if(key.length!==40){
+    statusBox.className='status error';
+    statusBox.textContent=`Informe o gabarito completo antes de corrigir (${key.length}/40).`;
+    statusBox.style.display='block';
+    return;
+  }
+
+  scanBtn.disabled=true;
+  scanBtn.textContent='Lendo...';
+  statusBox.style.display='none';
+  resultCard.style.display='none';
+  const form=new FormData();
+  form.append('file',file);
   try{
-    const res=await fetch('/api/scan',{method:'POST',body:form}); const data=await res.json();
+    const res=await fetch('/api/scan',{method:'POST',body:form});
+    const data=await res.json();
     if(!res.ok)throw new Error(data.detail||'Erro na leitura');
-    statusBox.className='status ok'; statusBox.textContent='Cartão lido com sucesso.'; statusBox.style.display='block'; render(data);
-  }catch(e){ statusBox.className='status error'; statusBox.textContent=e.message; statusBox.style.display='block'; resultCard.style.display='none'; }
-  finally{scanBtn.disabled=false;scanBtn.textContent='Ler respostas'}
+    statusBox.className='status ok';
+    statusBox.textContent='Cartão lido e corrigido com sucesso.';
+    statusBox.style.display='block';
+    render(data);
+  }catch(e){
+    statusBox.className='status error';
+    statusBox.textContent=e.message;
+    statusBox.style.display='block';
+    resultCard.style.display='none';
+  }finally{
+    scanBtn.textContent='Ler e corrigir respostas';
+    updateKeyState();
+  }
 });
 </script>
 </body>
