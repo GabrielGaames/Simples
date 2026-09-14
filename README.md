@@ -47,3 +47,6 @@ Não há banco de dados, login, OAuth nem variáveis secretas nesta versão.
 ## Regra de uso
 
 A prioridade desta versão é confiabilidade. Se o cartão estiver muito pequeno na foto ou inclinado demais, a API retorna uma mensagem pedindo nova foto.
+
+## Quantidade de questões
+A interface permite escolher 20, 30 ou 40 questões. O scanner continua lendo o cartão físico inteiro de 40 posições, mas a correção considera somente as primeiras N questões selecionadas. As demais são ignoradas e não contam como erro, branco ou anulação. O navegador salva um gabarito separado para cada quantidade.
