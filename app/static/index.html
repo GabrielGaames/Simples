@@ -12,12 +12,25 @@
     #preview{display:none;width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#111;margin-top:14px}.status{display:none;padding:12px;border-radius:12px;margin-top:12px}.status.error{background:#fff0f0;color:#a02020}.status.ok{background:#edf9f0;color:#166534}
     textarea,select{width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px;font-size:15px;background:#fff;color:#18202a}textarea{min-height:80px;resize:vertical}.field{margin-top:14px}.field label{display:block;font-weight:700;margin-bottom:7px}.summary{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.pill{padding:7px 10px;border-radius:999px;background:#eef2f5;font-weight:700;font-size:13px}.questions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.q{padding:9px;border:1px solid #e0e5ea;border-radius:10px;text-align:center;background:#fff}.q b{display:block;font-size:12px;color:#687482}.q .ans{font-size:18px;font-weight:800}.q.mult{background:#fff2e4;border-color:#ffd39c}.q.blank{background:#f3f4f6}.q.wrong{outline:2px solid #ef4444}.q.correct{outline:2px solid #22c55e}
     @media(max-width:520px){.questions{grid-template-columns:repeat(3,1fr)}.wrap{padding:12px}}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hidden{display:none}.tableWrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left}@media(max-width:520px){.row{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
     <h1>EDUSCANNER</h1>
+    <p class="muted">Turmas, alunos e correção pelo celular.</p>
+    <div class="field"><label>Importar alunos (.xlsx)</label><p class="muted">Colunas: Nome do aluno, Turma e Matrícula.</p><label class="btn secondary" for="studentsFile">📄 Selecionar planilha</label><input id="studentsFile" type="file" accept=".xlsx,.xlsm"/><button id="importStudents" class="btn" disabled>Importar planilha</button><div id="importStatus" class="status"></div></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Identificação da correção</h2>
+    <div class="field"><label for="examName">Nome da prova / bloco</label><input id="examName" style="width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px;font-size:15px" placeholder="Ex.: Bloco 1" /></div>
+    <div class="row"><div class="field"><label for="classSelect">Turma</label><select id="classSelect"><option value="">Selecione...</option></select></div><div class="field"><label for="studentSelect">Aluno</label><select id="studentSelect" disabled><option value="">Selecione a turma...</option></select></div></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Scanner</h2>
     <p class="muted">Leitor simples do cartão de 40 questões.</p>
     <div class="guide"><b>Para funcionar bem:</b><br>• folha apoiada e o mais plana possível;<br>• fotografe de cima, sem inclinar muito;<br>• deixe o cartão ocupar boa parte da foto;<br>• pode usar caneta vermelha, azul ou preta.</div>
     <label class="btn" for="photo">📷 Tirar foto do cartão</label>
@@ -48,13 +61,21 @@
   <div id="resultCard" class="card" style="display:none">
     <h2 style="margin-top:0">Resultado</h2>
     <div id="summary" class="summary"></div>
-    <div id="questions" class="questions"></div>
+    <div id="questions" class="questions"></div><button id="saveResult" class="btn" disabled>💾 Salvar resultado do aluno</button><div id="saveStatus" class="status"></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Relatório da turma</h2>
+    <p class="muted">Mostra os resultados já salvos para a turma selecionada.</p>
+    <button id="loadReport" class="btn secondary">Atualizar relatório</button>
+    <div id="reportSummary" class="summary"></div><div class="tableWrap"><table><thead><tr><th>Aluno</th><th>Matrícula</th><th>Prova</th><th>Acertos</th><th>Erros</th><th>Nota</th></tr></thead><tbody id="reportBody"></tbody></table></div>
   </div>
 </div>
 <script>
 const photo=document.querySelector('#photo'), preview=document.querySelector('#preview'), scanBtn=document.querySelector('#scan'), statusBox=document.querySelector('#status');
 const resultCard=document.querySelector('#resultCard'), questionsBox=document.querySelector('#questions'), summary=document.querySelector('#summary'), keyBox=document.querySelector('#key'), keyInfo=document.querySelector('#keyInfo'), questionCountBox=document.querySelector('#questionCount');
 let file=null, lastResult=null;
+const classSelect=document.querySelector('#classSelect'), studentSelect=document.querySelector('#studentSelect'), examName=document.querySelector('#examName'), saveResultBtn=document.querySelector('#saveResult'), saveStatus=document.querySelector('#saveStatus');
+const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary');
 
 const KEY_STORAGE_PREFIX='eduscanner_gabarito_';
 const COUNT_STORAGE='eduscanner_quantidade_questoes';
@@ -157,6 +178,8 @@ function render(data){
     summary.appendChild(p);
   });
   resultCard.style.display='block';
+  saveResultBtn.disabled=!studentSelect.value;
+  saveStatus.style.display='none';
   resultCard.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -203,6 +226,45 @@ scanBtn.addEventListener('click',async()=>{
     updateKeyState();
   }
 });
+
+async function loadClasses(){
+  const res=await fetch('/api/turmas'); const items=await res.json();
+  classSelect.innerHTML='<option value="">Selecione...</option>'+items.map(t=>`<option value="${t.id}">${t.nome} (${t.total_alunos})</option>`).join('');
+}
+async function loadStudents(){
+  const id=classSelect.value; studentSelect.disabled=!id; saveResultBtn.disabled=true;
+  if(!id){studentSelect.innerHTML='<option value="">Selecione a turma...</option>';return;}
+  const res=await fetch(`/api/turmas/${id}/alunos`); const items=await res.json();
+  studentSelect.innerHTML='<option value="">Selecione o aluno...</option>'+items.map(a=>`<option value="${a.id}">${a.nome} · ${a.matricula}</option>`).join('');
+}
+classSelect.addEventListener('change',()=>{loadStudents(); reportBody.innerHTML=''; reportSummary.innerHTML='';});
+studentSelect.addEventListener('change',()=>{saveResultBtn.disabled=!studentSelect.value || !lastResult;});
+studentsFile.addEventListener('change',()=>{importStudents.disabled=!studentsFile.files?.[0];});
+importStudents.addEventListener('click',async()=>{
+  const f=studentsFile.files?.[0]; if(!f)return; importStudents.disabled=true; importStudents.textContent='Importando...';
+  const fd=new FormData(); fd.append('file',f);
+  try{const r=await fetch('/api/alunos/importar',{method:'POST',body:fd}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro na importação'); importStatus.className='status ok'; importStatus.textContent=`Importação concluída: ${d.criados} novos, ${d.atualizados} atualizados, ${d.ignorados} ignorados.`; importStatus.style.display='block'; await loadClasses();}
+  catch(e){importStatus.className='status error'; importStatus.textContent=e.message; importStatus.style.display='block';}
+  finally{importStudents.textContent='Importar planilha'; importStudents.disabled=false;}
+});
+saveResultBtn.addEventListener('click',async()=>{
+  if(!lastResult||!studentSelect.value)return;
+  const key=parseKey(), count=selectedCount();
+  const body={aluno_id:Number(studentSelect.value),prova_nome:examName.value.trim()||'Prova',quantidade_questoes:count,gabarito:key,questions:lastResult.questions};
+  saveResultBtn.disabled=true; saveResultBtn.textContent='Salvando...';
+  try{const r=await fetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro ao salvar'); saveStatus.className='status ok'; saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`; saveStatus.style.display='block'; await showReport();}
+  catch(e){saveStatus.className='status error';saveStatus.textContent=e.message;saveStatus.style.display='block';}
+  finally{saveResultBtn.textContent='💾 Salvar resultado do aluno';saveResultBtn.disabled=false;}
+});
+async function showReport(){
+  if(!classSelect.value){reportBody.innerHTML='<tr><td colspan="6">Selecione uma turma.</td></tr>';return;}
+  const r=await fetch(`/api/turmas/${classSelect.value}/relatorio`); const d=await r.json();
+  const rows=d.resultados||[]; reportBody.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.aluno}</td><td>${x.matricula}</td><td>${x.prova}</td><td>${x.acertos}/${x.questoes}</td><td>${x.erros}</td><td>${Number(x.nota).toFixed(2)}</td></tr>`).join(''):'<tr><td colspan="6">Nenhum resultado salvo.</td></tr>';
+  const avg=rows.length?rows.reduce((a,x)=>a+Number(x.nota),0)/rows.length:0; reportSummary.innerHTML=`<span class="pill">Resultados: ${rows.length}</span><span class="pill">Média: ${avg.toFixed(2)}</span>`;
+}
+loadReport.addEventListener('click',showReport);
+loadClasses();
+
 </script>
 </body>
 </html>

@@ -1,52 +1,40 @@
-# EDUSCANNER Simples
+# EDUSCANNER
 
-Versão mínima focada exclusivamente em ler o cartão físico EDUSCANNER de 40 questões por foto de celular.
+Versão simples com o scanner de 40 questões preservado e módulos de turmas, alunos e resultados.
 
-## O que esta versão faz
+## Funcionalidades
+- Scanner do cartão físico de 40 questões (motor preservado)
+- Provas de 20, 30 ou 40 questões; posições excedentes são ignoradas
+- Importação de alunos por Excel (.xlsx/.xlsm)
+- Colunas aceitas: `Nome do aluno`, `Turma`, `Matrícula`
+- Turmas criadas automaticamente na importação
+- Matrícula é única; uma nova importação atualiza nome/turma do aluno existente
+- Seleção Turma -> Aluno antes de salvar
+- Resultado salvo com respostas, gabarito, acertos, erros, anuladas, brancos e nota
+- Relatório básico por turma
 
-- Usa a câmera nativa do celular.
-- Lê 40 questões em duas colunas de 20.
-- Aceita marcações vermelhas, azuis e pretas.
-- Duas ou mais marcações na mesma questão = `ANULADA` e, se houver gabarito oficial, conta como errada.
-- Questão sem marcação = em branco e errada.
-- Recusa fotos muito inclinadas ou muito distantes em vez de tentar adivinhar.
-- Gabarito oficial é opcional e pode ser digitado na própria tela para calcular acertos, erros e nota.
-
-## Rodar localmente
-
-```bash
-python -m venv .venv
-```
-
-Windows:
-
-```bash
-.venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-Abra `http://127.0.0.1:8000`.
+## Banco
+Localmente, sem variável de ambiente, usa SQLite (`eduscanner.db`).
+No Render, use PostgreSQL e configure `DATABASE_URL` com a **Internal Database URL**.
 
 ## Render
-
 Build command:
-
-```text
-pip install -r requirements.txt
-```
+`pip install -r requirements.txt`
 
 Start command:
+`uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-```text
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+Environment Variable:
+`DATABASE_URL=<Internal Database URL do PostgreSQL>`
 
-Não há banco de dados, login, OAuth nem variáveis secretas nesta versão.
+## Planilha
+A primeira linha deve conter as colunas:
 
-## Regra de uso
+| Nome do aluno | Turma | Matrícula |
+|---|---|---|
+| Ana Silva | 7º A | 12345 |
+| João Souza | 7º A | 12346 |
 
-A prioridade desta versão é confiabilidade. Se o cartão estiver muito pequeno na foto ou inclinado demais, a API retorna uma mensagem pedindo nova foto.
-
-## Quantidade de questões
-A interface permite escolher 20, 30 ou 40 questões. O scanner continua lendo o cartão físico inteiro de 40 posições, mas a correção considera somente as primeiras N questões selecionadas. As demais são ignoradas e não contam como erro, branco ou anulação. O navegador salva um gabarito separado para cada quantidade.
+## Rodar local
+`pip install -r requirements.txt`
+`uvicorn app.main:app --reload`
