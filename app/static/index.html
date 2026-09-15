@@ -16,11 +16,27 @@
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="card">
+<div id="loginScreen" class="wrap" style="max-width:460px;padding-top:8vh">
+  <div class="card"><h1>EDUSCANNER</h1><p class="muted">Entre para acessar suas turmas.</p>
+    <div class="field"><label>Usuário</label><input id="loginUser" style="width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px;font-size:15px" autocomplete="username"></div>
+    <div class="field"><label>Senha</label><input id="loginPass" type="password" style="width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px;font-size:15px" autocomplete="current-password"></div>
+    <button id="loginBtn" class="btn">Entrar</button><div id="loginStatus" class="status"></div>
+  </div>
+</div>
+<div id="appScreen" class="wrap" style="display:none">
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div><b id="currentUserName">Usuário</b><div class="muted" id="currentUserType" style="margin:2px 0 0"></div></div><button id="logoutBtn" class="btn secondary" style="width:auto;margin:0;padding:10px 14px">Sair</button></div>
+  <div id="adminImportCard" class="card">
     <h1>EDUSCANNER</h1>
-    <p class="muted">Turmas, alunos e correção pelo celular.</p>
+    <p class="muted">Administração de turmas e alunos.</p>
     <div class="field"><label>Importar alunos (.xlsx)</label><p class="muted">Colunas: Nome do aluno, Turma e Matrícula.</p><label class="btn secondary" for="studentsFile">📄 Selecionar planilha</label><input id="studentsFile" type="file" accept=".xlsx,.xlsm"/><button id="importStudents" class="btn" disabled>Importar planilha</button><div id="importStatus" class="status"></div></div>
+  </div>
+  <div id="adminUsersCard" class="card" style="display:none">
+    <h2 style="margin-top:0">Usuários e permissões</h2><p class="muted">Cadastre professores e escolha quais turmas cada um pode acessar.</p>
+    <div class="row"><div class="field"><label>Nome</label><input id="userName" style="width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px" placeholder="Professor Gabriel"></div><div class="field"><label>Login</label><input id="userLogin" style="width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px" placeholder="gabriel"></div></div>
+    <div class="row"><div class="field"><label>Senha</label><input id="userPass" type="password" style="width:100%;border:1px solid #ccd4dc;border-radius:12px;padding:12px" placeholder="mínimo 6 caracteres"></div><div class="field"><label>Perfil</label><select id="userType"><option value="professor">Professor</option><option value="admin">Administrador</option></select></div></div>
+    <div class="field"><label>Turmas permitidas</label><div id="userClasses" class="guide"></div></div>
+    <button id="createUser" class="btn">Criar usuário</button><div id="userStatus" class="status"></div>
+    <div class="tableWrap" style="margin-top:14px"><table><thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Turmas</th><th>Status</th></tr></thead><tbody id="usersBody"></tbody></table></div>
   </div>
 
   <div class="card">
@@ -71,6 +87,16 @@
   </div>
 </div>
 <script>
+let currentUser=null;
+const loginScreen=document.querySelector('#loginScreen'), appScreen=document.querySelector('#appScreen'), loginBtn=document.querySelector('#loginBtn'), loginStatus=document.querySelector('#loginStatus');
+async function apiFetch(url,opts={}){const r=await fetch(url,opts);if(r.status===401){showLogin();throw new Error('Sessão encerrada. Entre novamente.')}return r;}
+function showLogin(){currentUser=null;appScreen.style.display='none';loginScreen.style.display='block';}
+async function startApp(){
+  try{const r=await fetch('/api/auth/me');if(!r.ok){showLogin();return;}currentUser=await r.json();loginScreen.style.display='none';appScreen.style.display='block';document.querySelector('#currentUserName').textContent=currentUser.nome;document.querySelector('#currentUserType').textContent=currentUser.tipo==='admin'?'Administrador':'Professor';document.querySelector('#adminImportCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelector('#adminUsersCard').style.display=currentUser.tipo==='admin'?'block':'none';await loadClasses();if(currentUser.tipo==='admin')await loadUsers();}catch(e){showLogin();}
+}
+loginBtn.addEventListener('click',async()=>{loginBtn.disabled=true;try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:document.querySelector('#loginUser').value,senha:document.querySelector('#loginPass').value})});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Falha no login');loginStatus.style.display='none';await startApp();}catch(e){loginStatus.className='status error';loginStatus.textContent=e.message;loginStatus.style.display='block';}finally{loginBtn.disabled=false;}});
+document.querySelector('#loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')loginBtn.click();});
+document.querySelector('#logoutBtn').addEventListener('click',async()=>{await fetch('/api/auth/logout',{method:'POST'});showLogin();});
 const photo=document.querySelector('#photo'), preview=document.querySelector('#preview'), scanBtn=document.querySelector('#scan'), statusBox=document.querySelector('#status');
 const resultCard=document.querySelector('#resultCard'), questionsBox=document.querySelector('#questions'), summary=document.querySelector('#summary'), keyBox=document.querySelector('#key'), keyInfo=document.querySelector('#keyInfo'), questionCountBox=document.querySelector('#questionCount');
 let file=null, lastResult=null;
@@ -209,7 +235,7 @@ scanBtn.addEventListener('click',async()=>{
   const form=new FormData();
   form.append('file',file);
   try{
-    const res=await fetch('/api/scan',{method:'POST',body:form});
+    const res=await apiFetch('/api/scan',{method:'POST',body:form});
     const data=await res.json();
     if(!res.ok)throw new Error(data.detail||'Erro na leitura');
     statusBox.className='status ok';
@@ -228,13 +254,13 @@ scanBtn.addEventListener('click',async()=>{
 });
 
 async function loadClasses(){
-  const res=await fetch('/api/turmas'); const items=await res.json();
+  const res=await apiFetch('/api/turmas'); const items=await res.json();
   classSelect.innerHTML='<option value="">Selecione...</option>'+items.map(t=>`<option value="${t.id}">${t.nome} (${t.total_alunos})</option>`).join('');
 }
 async function loadStudents(){
   const id=classSelect.value; studentSelect.disabled=!id; saveResultBtn.disabled=true;
   if(!id){studentSelect.innerHTML='<option value="">Selecione a turma...</option>';return;}
-  const res=await fetch(`/api/turmas/${id}/alunos`); const items=await res.json();
+  const res=await apiFetch(`/api/turmas/${id}/alunos`); const items=await res.json();
   studentSelect.innerHTML='<option value="">Selecione o aluno...</option>'+items.map(a=>`<option value="${a.id}">${a.nome} · ${a.matricula}</option>`).join('');
 }
 classSelect.addEventListener('change',()=>{loadStudents(); reportBody.innerHTML=''; reportSummary.innerHTML='';});
@@ -243,7 +269,7 @@ studentsFile.addEventListener('change',()=>{importStudents.disabled=!studentsFil
 importStudents.addEventListener('click',async()=>{
   const f=studentsFile.files?.[0]; if(!f)return; importStudents.disabled=true; importStudents.textContent='Importando...';
   const fd=new FormData(); fd.append('file',f);
-  try{const r=await fetch('/api/alunos/importar',{method:'POST',body:fd}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro na importação'); importStatus.className='status ok'; importStatus.textContent=`Importação concluída: ${d.criados} novos, ${d.atualizados} atualizados, ${d.ignorados} ignorados.`; importStatus.style.display='block'; await loadClasses();}
+  try{const r=await apiFetch('/api/alunos/importar',{method:'POST',body:fd}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro na importação'); importStatus.className='status ok'; importStatus.textContent=`Importação concluída: ${d.criados} novos, ${d.atualizados} atualizados, ${d.ignorados} ignorados.`; importStatus.style.display='block'; await loadClasses();}
   catch(e){importStatus.className='status error'; importStatus.textContent=e.message; importStatus.style.display='block';}
   finally{importStudents.textContent='Importar planilha'; importStudents.disabled=false;}
 });
@@ -252,18 +278,31 @@ saveResultBtn.addEventListener('click',async()=>{
   const key=parseKey(), count=selectedCount();
   const body={aluno_id:Number(studentSelect.value),prova_nome:examName.value.trim()||'Prova',quantidade_questoes:count,gabarito:key,questions:lastResult.questions};
   saveResultBtn.disabled=true; saveResultBtn.textContent='Salvando...';
-  try{const r=await fetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro ao salvar'); saveStatus.className='status ok'; saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`; saveStatus.style.display='block'; await showReport();}
+  try{const r=await apiFetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro ao salvar'); saveStatus.className='status ok'; saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`; saveStatus.style.display='block'; await showReport();}
   catch(e){saveStatus.className='status error';saveStatus.textContent=e.message;saveStatus.style.display='block';}
   finally{saveResultBtn.textContent='💾 Salvar resultado do aluno';saveResultBtn.disabled=false;}
 });
 async function showReport(){
   if(!classSelect.value){reportBody.innerHTML='<tr><td colspan="6">Selecione uma turma.</td></tr>';return;}
-  const r=await fetch(`/api/turmas/${classSelect.value}/relatorio`); const d=await r.json();
+  const r=await apiFetch(`/api/turmas/${classSelect.value}/relatorio`); const d=await r.json();
   const rows=d.resultados||[]; reportBody.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.aluno}</td><td>${x.matricula}</td><td>${x.prova}</td><td>${x.acertos}/${x.questoes}</td><td>${x.erros}</td><td>${Number(x.nota).toFixed(2)}</td></tr>`).join(''):'<tr><td colspan="6">Nenhum resultado salvo.</td></tr>';
   const avg=rows.length?rows.reduce((a,x)=>a+Number(x.nota),0)/rows.length:0; reportSummary.innerHTML=`<span class="pill">Resultados: ${rows.length}</span><span class="pill">Média: ${avg.toFixed(2)}</span>`;
 }
 loadReport.addEventListener('click',showReport);
-loadClasses();
+
+async function loadUsers(){
+  if(!currentUser||currentUser.tipo!=='admin')return;
+  const tr=await apiFetch('/api/turmas'); const turmas=await tr.json();
+  document.querySelector('#userClasses').innerHTML=turmas.length?turmas.map(t=>`<label style="display:inline-block;margin:6px 14px 6px 0"><input type="checkbox" class="userClass" value="${t.id}"> ${t.nome}</label>`).join(''):'Importe alunos para criar turmas.';
+  const ur=await apiFetch('/api/admin/usuarios');const users=await ur.json();
+  const names=Object.fromEntries(turmas.map(t=>[t.id,t.nome]));
+  document.querySelector('#usersBody').innerHTML=users.map(u=>`<tr><td>${u.nome}</td><td>${u.login}</td><td>${u.tipo}</td><td>${u.tipo==='admin'?'Todas':u.turma_ids.map(id=>names[id]||id).join(', ')||'Nenhuma'}</td><td>${u.ativo?'Ativo':'Inativo'}</td></tr>`).join('');
+}
+document.querySelector('#createUser').addEventListener('click',async()=>{
+  const body={nome:document.querySelector('#userName').value.trim(),login:document.querySelector('#userLogin').value.trim(),senha:document.querySelector('#userPass').value,tipo:document.querySelector('#userType').value,turma_ids:[...document.querySelectorAll('.userClass:checked')].map(x=>Number(x.value))};
+  const st=document.querySelector('#userStatus');try{if(!body.nome||!body.login||!body.senha)throw new Error('Preencha nome, login e senha.');const r=await apiFetch('/api/admin/usuarios',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro ao criar usuário');st.className='status ok';st.textContent='Usuário criado com sucesso.';st.style.display='block';document.querySelector('#userName').value='';document.querySelector('#userLogin').value='';document.querySelector('#userPass').value='';document.querySelectorAll('.userClass').forEach(x=>x.checked=false);await loadUsers();}catch(e){st.className='status error';st.textContent=e.message;st.style.display='block';}
+});
+startApp();
 
 </script>
 </body>
