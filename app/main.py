@@ -3,11 +3,17 @@ import os
 from pathlib import Path
 from typing import Any
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl import load_workbook
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from .database import Base, SessionLocal, engine, get_db
 from .models import Aluno, Resultado, Turma, Usuario
 from .scanner import ScanError, scan_card
@@ -118,6 +124,61 @@ def update_user(user_id:int,payload:UserUpdate,db:Session=Depends(get_db),admin:
         u.senha_hash=hash_password(payload.senha)
     u.turmas=db.query(Turma).filter(Turma.id.in_(payload.turma_ids)).all() if payload.turma_ids else []
     db.commit(); return {'ok':True}
+
+
+
+def _pdf_resultado(r: Resultado, turma: Turma) -> BytesIO:
+    out = BytesIO()
+    doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=16*mm, leftMargin=16*mm, topMargin=14*mm, bottomMargin=14*mm)
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle('SchoolTitle', parent=styles['Title'], alignment=TA_CENTER, fontSize=15, leading=18, spaceAfter=3)
+    sub = ParagraphStyle('SchoolSub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=9, textColor=colors.HexColor('#555555'))
+    story = []
+    logo = BASE_DIR / 'static' / 'logo-escola.png'
+    if logo.exists():
+        story += [RLImage(str(logo), width=35*mm, height=35*mm), Spacer(1, 2*mm)]
+    story += [Paragraph('Colégio Estadual em Período Integral João Barbosa Reis', title), Paragraph('CEPI-JBR - Relatório de Resultado', sub), Spacer(1, 7*mm)]
+    info = [
+        ['Aluno', r.aluno.nome], ['Matrícula', r.aluno.matricula], ['Turma', turma.nome],
+        ['Prova / bloco', r.prova_nome], ['Questões', str(r.quantidade_questoes)],
+        ['Acertos', str(r.acertos)], ['Erros', str(r.erros)], ['Anuladas', str(r.anuladas)],
+        ['Em branco', str(r.em_branco)], ['Nota', f'{r.nota:.2f}'.replace('.', ',')],
+        ['Data', r.criado_em.strftime('%d/%m/%Y %H:%M')],
+    ]
+    table = Table(info, colWidths=[42*mm, 120*mm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f1f3f5')), ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#d6d9dc')), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('LEFTPADDING',(0,0),(-1,-1),7), ('RIGHTPADDING',(0,0),(-1,-1),7), ('TOPPADDING',(0,0),(-1,-1),7), ('BOTTOMPADDING',(0,0),(-1,-1),7),
+    ]))
+    story += [table, Spacer(1, 8*mm), Paragraph('Documento gerado pelo EduScanner. Relatório para conferência e uso administrativo.', sub)]
+    doc.build(story)
+    out.seek(0)
+    return out
+
+@app.delete('/api/admin/usuarios/{user_id}')
+def delete_user(user_id:int, db:Session=Depends(get_db), admin:Usuario=Depends(admin_user)):
+    u=db.get(Usuario,user_id)
+    if not u: raise HTTPException(404,'Usuário não encontrado.')
+    if u.id==admin.id: raise HTTPException(400,'Você não pode excluir o usuário administrador que está em uso.')
+    if u.tipo!='professor': raise HTTPException(400,'Por segurança, somente cadastros de professor podem ser excluídos por esta opção.')
+    db.delete(u); db.commit(); return {'ok':True}
+
+@app.delete('/api/resultados/{resultado_id}')
+def delete_resultado(resultado_id:int, db:Session=Depends(get_db), user:Usuario=Depends(current_user)):
+    r=db.get(Resultado,resultado_id)
+    if not r: raise HTTPException(404,'Resultado não encontrado.')
+    if not can_access_turma(user,r.aluno.turma_id): raise HTTPException(403,'Você não tem acesso a este resultado.')
+    db.delete(r); db.commit(); return {'ok':True}
+
+@app.get('/api/resultados/{resultado_id}/pdf')
+def resultado_pdf(resultado_id:int, db:Session=Depends(get_db), user:Usuario=Depends(current_user)):
+    r=db.get(Resultado,resultado_id)
+    if not r: raise HTTPException(404,'Resultado não encontrado.')
+    if not can_access_turma(user,r.aluno.turma_id): raise HTTPException(403,'Você não tem acesso a este resultado.')
+    pdf=_pdf_resultado(r,r.aluno.turma)
+    safe=''.join(c if c.isalnum() or c in '-_' else '_' for c in f'{r.aluno.nome}_{r.prova_nome}')[:100]
+    return StreamingResponse(pdf, media_type='application/pdf', headers={'Content-Disposition':f'attachment; filename="relatorio_{safe}.pdf"'})
 
 class ResultadoIn(BaseModel):
     aluno_id:int; prova_nome:str='Prova'; quantidade_questoes:int; gabarito:list[str]; questions:list[dict[str,Any]]
