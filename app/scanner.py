@@ -91,6 +91,24 @@ def _find_reference_rectangle(image: np.ndarray) -> tuple[np.ndarray, float, flo
             candidates.append((abs(ratio - 0.755), -area, ordered, ratio, area_ratio))
 
     if not candidates:
+        # Fallback para fotos de celular: alguns aparelhos deixam a folha inteira
+        # com pouco contraste e o retângulo interno não aparece bem.
+        # Usa a maior área clara da folha como referência.
+        light = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)[1]
+        contours, _ = cv2.findContours(light, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        fallback = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < 0.35 * h * w:
+                continue
+            peri = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.03 * peri, True)
+            if len(approx) == 4:
+                fallback.append((area, _order_points(approx.reshape(4, 2))))
+        if fallback:
+            _, ordered = max(fallback, key=lambda x: x[0])
+            return ordered, 0.755, max(a / float(h*w) for a, _ in fallback)
+
         raise ScanError(
             "Não consegui localizar o cartão. Fotografe a folha inteira, sobre uma superfície plana e com boa luz."
         )
