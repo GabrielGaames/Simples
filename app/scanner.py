@@ -109,9 +109,17 @@ def _find_reference_rectangle(image: np.ndarray) -> tuple[np.ndarray, float, flo
             _, ordered = max(fallback, key=lambda x: x[0])
             return ordered, 0.755, max(a / float(h*w) for a, _ in fallback)
 
-        raise ScanError(
-            "Não consegui localizar o cartão. Fotografe a folha inteira, sobre uma superfície plana e com boa luz."
-        )
+        # Fallback final: usa a própria imagem inteira como cartão.
+        # O modelo EduScanner 45Q possui grade fixa; a perspectiva pode ser
+        # corrigida sem depender das linhas internas do formulário.
+        margin_x = 0.04 * w
+        margin_y = 0.03 * h
+        return np.array([
+            [margin_x, margin_y],
+            [w - margin_x, margin_y],
+            [w - margin_x, h - margin_y],
+            [margin_x, h - margin_y],
+        ], dtype=np.float32), 0.755, 1.0
 
     candidates.sort(key=lambda item: (item[0], item[1]))
     _, _, ordered, ratio, area_ratio = candidates[0]
@@ -136,7 +144,7 @@ def _warp(image: np.ndarray) -> tuple[np.ndarray, dict]:
     return warped, {"ratio": float(ratio), "area_ratio": float(area_ratio)}
 
 
-def _bubble_score(gray: np.ndarray, hsv: np.ndarray, x: float, y: float, radius: int = 9) -> float:
+def _bubble_score(gray: np.ndarray, hsv: np.ndarray, x: float, y: float, radius: int = 11) -> float:
     """Compara o centro da bolha com o fundo local.
 
     Isso aceita marcações pretas, azuis e vermelhas e reduz o efeito de sombras.
