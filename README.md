@@ -44,3 +44,10 @@ A primeira linha deve conter as colunas:
 The scanner is calibrated for the PUC Goiás / ENEM PARA TODOS 45-question response card. V4 detects the three printed response blocks (01–15, 16–30 and 31–45), rectifies each block independently, and samples only the 225 answer cells. The header and the “COMO PREENCHER” examples are outside the reading regions.
 
 The result includes a confidence value per detected answer and a list of low-confidence questions so the teacher can review before saving.
+
+## Atualização v6.1 — Relatório por turma e diagnóstico
+- Relatórios filtrados por turma e por prova/bloco.
+- PDF consolidado da turma.
+- Diagnóstico automático com média, aproveitamento, distribuição dos resultados e médias de acertos/erros/brancos/anuladas.
+- Quando uma única prova é selecionada, análise por questão com percentual de acertos, brancos e anuladas.
+- Identificação de pontos de maior domínio e pontos para reforço para apoiar o feedback coletivo.

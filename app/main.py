@@ -200,12 +200,94 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
     wrong=count-correct;nota=round(correct/count*10,2)
     result=Resultado(aluno_id=aluno.id,prova_nome=payload.prova_nome.strip() or 'Prova',quantidade_questoes=count,gabarito=','.join(payload.gabarito),respostas=','.join(answers),acertos=correct,erros=wrong,anuladas=mult,em_branco=blank,nota=nota)
     db.add(result);db.commit();db.refresh(result);return {'id':result.id,'acertos':correct,'erros':wrong,'anuladas':mult,'em_branco':blank,'nota':nota}
+
+def _turma_resultados(db: Session, turma_id: int, prova_nome: str | None = None):
+    query = db.query(Resultado).join(Aluno).filter(Aluno.turma_id == turma_id)
+    if prova_nome:
+        query = query.filter(Resultado.prova_nome == prova_nome)
+    return query.order_by(Aluno.nome, Resultado.criado_em.desc()).all()
+
+def _diagnostico_turma(resultados):
+    if not resultados:
+        return {'total_resultados':0,'alunos_com_resultado':0,'media_nota':0,'aproveitamento':0,'media_acertos':0,'media_erros':0,'media_brancos':0,'media_anuladas':0,'distribuicao':[],'questoes':[],'texto':'Ainda não há resultados suficientes para gerar um diagnóstico.'}
+    alunos=len({r.aluno_id for r in resultados})
+    media_nota=sum(r.nota for r in resultados)/len(resultados)
+    media_acertos=sum(r.acertos for r in resultados)/len(resultados)
+    media_erros=sum(r.erros for r in resultados)/len(resultados)
+    media_brancos=sum(r.em_branco for r in resultados)/len(resultados)
+    media_anuladas=sum(r.anuladas for r in resultados)/len(resultados)
+    aproveitamento=sum((r.acertos/r.quantidade_questoes*100) if r.quantidade_questoes else 0 for r in resultados)/len(resultados)
+    faixas={'0–39%':0,'40–59%':0,'60–79%':0,'80–100%':0}
+    for r in resultados:
+        pct=(r.acertos/r.quantidade_questoes*100) if r.quantidade_questoes else 0
+        if pct<40: faixas['0–39%']+=1
+        elif pct<60: faixas['40–59%']+=1
+        elif pct<80: faixas['60–79%']+=1
+        else: faixas['80–100%']+=1
+    questoes=[]
+    if len({r.prova_nome for r in resultados})==1:
+        maxq=max((r.quantidade_questoes for r in resultados),default=0)
+        for i in range(maxq):
+            attempted=correct=blank=multi=0
+            for r in resultados:
+                if i>=r.quantidade_questoes: continue
+                rs=(r.respostas or '').split(','); gs=(r.gabarito or '').split(',')
+                ans=rs[i].strip().upper() if i<len(rs) else ''; key=gs[i].strip().upper() if i<len(gs) else ''
+                attempted+=1
+                if ans=='MULT': multi+=1
+                elif not ans: blank+=1
+                elif key and ans==key: correct+=1
+            if attempted:
+                questoes.append({'questao':i+1,'respostas':attempted,'acertos':correct,'percentual':round(correct/attempted*100,1),'brancos':blank,'anuladas':multi})
+    fortes=sorted(questoes,key=lambda x:(-x['percentual'],x['questao']))[:3]
+    atencao=sorted(questoes,key=lambda x:(x['percentual'],x['questao']))[:3]
+    if questoes:
+        fortes_txt=', '.join(f"Q{x['questao']} ({x['percentual']:.0f}%)" for x in fortes)
+        atencao_txt=', '.join(f"Q{x['questao']} ({x['percentual']:.0f}%)" for x in atencao)
+        texto=(f"A turma apresentou aproveitamento médio de {aproveitamento:.1f}%. Como pontos de maior domínio, destacam-se {fortes_txt}. "
+               f"As questões que merecem retomada ou reforço são {atencao_txt}. A média de questões em branco foi {media_brancos:.1f} por resultado e a média de anuladas foi {media_anuladas:.1f}.")
+    else:
+        texto=(f"A turma apresentou aproveitamento médio de {aproveitamento:.1f}%. A média foi {media_nota:.2f} e houve, em média, {media_brancos:.1f} questões em branco por resultado. "
+               "Para um diagnóstico por questão, selecione uma única prova no relatório.")
+    return {'total_resultados':len(resultados),'alunos_com_resultado':alunos,'media_nota':round(media_nota,2),'aproveitamento':round(aproveitamento,1),'media_acertos':round(media_acertos,2),'media_erros':round(media_erros,2),'media_brancos':round(media_brancos,2),'media_anuladas':round(media_anuladas,2),'distribuicao':[{'faixa':k,'quantidade':v} for k,v in faixas.items()],'questoes':questoes,'texto':texto}
+
+def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None):
+    out=BytesIO(); doc=SimpleDocTemplate(out,pagesize=A4,rightMargin=12*mm,leftMargin=12*mm,topMargin=12*mm,bottomMargin=12*mm)
+    styles=getSampleStyleSheet(); title=ParagraphStyle('RTTitle',parent=styles['Title'],alignment=TA_CENTER,fontSize=16,leading=19,spaceAfter=3); sub=ParagraphStyle('RTSub',parent=styles['Normal'],alignment=TA_CENTER,fontSize=9,textColor=colors.HexColor('#555555')); h=ParagraphStyle('RTH',parent=styles['Heading2'],fontSize=12,leading=15,spaceBefore=7,spaceAfter=5); small=ParagraphStyle('RTSmall',parent=styles['Normal'],fontSize=8.5,leading=12)
+    story=[]; logo=BASE_DIR/'static'/'logo-escola.png'
+    if logo.exists(): story += [RLImage(str(logo),width=25*mm,height=25*mm),Spacer(1,1*mm)]
+    story += [Paragraph('Colégio Estadual em Período Integral João Barbosa Reis',title),Paragraph('CEPI-JBR - Relatório e diagnóstico de desempenho da turma',sub),Spacer(1,5*mm)]
+    info=[['Turma',turma.nome],['Prova',prova_nome or 'Todas as provas'],['Resultados',str(diagnostico['total_resultados'])],['Alunos com resultado',str(diagnostico['alunos_com_resultado'])],['Média da turma',f"{diagnostico['media_nota']:.2f}".replace('.',',')],['Aproveitamento médio',f"{diagnostico['aproveitamento']:.1f}%"]]
+    t=Table(info,colWidths=[45*mm,120*mm]); t.setStyle(TableStyle([('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f1f3f5')),('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#d6d9dc')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('PADDING',(0,0),(-1,-1),6)])); story += [t,Spacer(1,6*mm),Paragraph('Diagnóstico geral',h),Paragraph(diagnostico['texto'],small),Spacer(1,4*mm)]
+    dist=[['Faixa de aproveitamento','Resultados']]+[[x['faixa'],str(x['quantidade'])] for x in diagnostico['distribuicao']]
+    td=Table(dist,colWidths=[95*mm,40*mm]); td.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#d6d9dc')),('ALIGN',(1,1),(-1,-1),'CENTER'),('PADDING',(0,0),(-1,-1),5)])); story += [Paragraph('Distribuição dos resultados',h),td]
+    if diagnostico['questoes']:
+        story += [Paragraph('Desempenho por questão',h)]; qt=[['Questão','Respostas','Acertos','Aproveitamento','Brancos','Anuladas']]+[[str(x['questao']),str(x['respostas']),str(x['acertos']),f"{x['percentual']:.1f}%",str(x['brancos']),str(x['anuladas'])] for x in diagnostico['questoes']]; qtb=Table(qt,colWidths=[18*mm,24*mm,22*mm,32*mm,24*mm,24*mm],repeatRows=1); qtb.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#d6d9dc')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),7.5),('PADDING',(0,0),(-1,-1),4)])); story += [qtb]
+    story += [Spacer(1,7*mm),Paragraph('Resultados individuais',h)]; rows=[['Aluno','Matrícula','Prova','Acertos','Erros','Nota']]+[[r.aluno.nome,r.aluno.matricula,r.prova_nome,f'{r.acertos}/{r.quantidade_questoes}',str(r.erros),f'{r.nota:.2f}'.replace('.',',')] for r in resultados]
+    if len(rows)==1: rows.append(['Nenhum resultado','','','','',''])
+    rt=Table(rows,colWidths=[50*mm,28*mm,37*mm,24*mm,18*mm,18*mm],repeatRows=1); rt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#d6d9dc')),('FONTSIZE',(0,0),(-1,-1),7.5),('PADDING',(0,0),(-1,-1),4)])); story += [rt,Spacer(1,5*mm),Paragraph('Diagnóstico gerado automaticamente a partir dos resultados salvos. Use-o como apoio ao planejamento do feedback e das próximas atividades.',small)]
+    doc.build(story); out.seek(0); return out
+
+@app.get('/api/turmas/{turma_id}/provas')
+def listar_provas_turma(turma_id:int, db:Session=Depends(get_db), user:Usuario=Depends(current_user)):
+    turma=db.get(Turma,turma_id)
+    if not turma: raise HTTPException(404,'Turma não encontrada.')
+    if not can_access_turma(user,turma_id): raise HTTPException(403,'Você não tem acesso a esta turma.')
+    return [x[0] for x in db.query(Resultado.prova_nome).join(Aluno).filter(Aluno.turma_id==turma_id).distinct().order_by(Resultado.prova_nome).all()]
+
 @app.get('/api/turmas/{turma_id}/relatorio')
 def relatorio(turma_id:int,prova_nome:str|None=None,db:Session=Depends(get_db),user:Usuario=Depends(current_user)):
     turma=db.get(Turma,turma_id)
-    if not turma:raise HTTPException(404,'Turma não encontrada.')
-    if not can_access_turma(user,turma_id):raise HTTPException(403,'Você não tem acesso a esta turma.')
-    query=db.query(Resultado).join(Aluno).filter(Aluno.turma_id==turma_id)
-    if prova_nome:query=query.filter(Resultado.prova_nome==prova_nome)
-    resultados=query.order_by(Aluno.nome,Resultado.criado_em.desc()).all()
-    return {'turma':turma.nome,'resultados':[{'id':r.id,'aluno':r.aluno.nome,'matricula':r.aluno.matricula,'prova':r.prova_nome,'questoes':r.quantidade_questoes,'acertos':r.acertos,'erros':r.erros,'anuladas':r.anuladas,'em_branco':r.em_branco,'nota':r.nota,'data':r.criado_em.isoformat()} for r in resultados]}
+    if not turma: raise HTTPException(404,'Turma não encontrada.')
+    if not can_access_turma(user,turma_id): raise HTTPException(403,'Você não tem acesso a esta turma.')
+    resultados=_turma_resultados(db,turma_id,prova_nome); diagnostico=_diagnostico_turma(resultados)
+    return {'turma':turma.nome,'prova':prova_nome or 'Todas as provas','diagnostico':diagnostico,'resultados':[{'id':r.id,'aluno':r.aluno.nome,'matricula':r.aluno.matricula,'prova':r.prova_nome,'questoes':r.quantidade_questoes,'acertos':r.acertos,'erros':r.erros,'anuladas':r.anuladas,'em_branco':r.em_branco,'nota':r.nota,'data':r.criado_em.isoformat()} for r in resultados]}
+
+@app.get('/api/turmas/{turma_id}/relatorio/pdf')
+def relatorio_turma_pdf(turma_id:int,prova_nome:str|None=None,db:Session=Depends(get_db),user:Usuario=Depends(current_user)):
+    turma=db.get(Turma,turma_id)
+    if not turma: raise HTTPException(404,'Turma não encontrada.')
+    if not can_access_turma(user,turma_id): raise HTTPException(403,'Você não tem acesso a esta turma.')
+    resultados=_turma_resultados(db,turma_id,prova_nome); diagnostico=_diagnostico_turma(resultados); pdf=_pdf_relatorio_turma(turma,resultados,diagnostico,prova_nome)
+    safe=''.join(c if c.isalnum() or c in '-_' else '_' for c in f'{turma.nome}_{prova_nome or "todas"}')[:100]
+    return StreamingResponse(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="relatorio_turma_{safe}.pdf"'})
