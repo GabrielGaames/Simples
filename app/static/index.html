@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>EduScanner · CEPI-JBR</title>
 <style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--bg:#f5f6f8;--surface:#fff;--ink:#18202d;--muted:#697386;--line:#e5e8ed;--nav:#171a20;--nav2:#22262e;--accent:#c69a63;--ok:#198754;--danger:#c53d3d}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink)}button,input,select,textarea{font:inherit}.hidden{display:none}.muted{color:var(--muted);line-height:1.5}.status{display:none;padding:11px 13px;border-radius:10px;margin-top:12px;font-size:14px;font-weight:650}.status.error{background:#fff1f1;color:#a52828;border:1px solid #ffd7d7}.status.ok{background:#eefaf1;color:#166534;border:1px solid #ccefd5}.btn{border:0;border-radius:10px;padding:11px 14px;font-weight:750;cursor:pointer;background:var(--nav);color:#fff;transition:.15s}.btn:hover:not(:disabled){opacity:.9}.btn.secondary{background:#f3f4f6;color:#273142;border:1px solid #e1e4e8}.btn:disabled{opacity:.45;cursor:not-allowed}.field{margin-top:14px}.field label{display:block;font-size:13px;font-weight:750;margin-bottom:6px}input[type=file]{display:none}input:not([type=file]),select,textarea{width:100%!important;border:1px solid #d7dce2!important;border-radius:10px!important;padding:11px 12px!important;background:#fff;outline:none;font-size:15px!important}input:focus,select:focus,textarea:focus{border-color:#9d7b52!important;box-shadow:0 0 0 3px rgba(198,154,99,.14)}textarea{min-height:88px;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.guide{background:#f8f9fb;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:12px 14px;line-height:1.55;color:#4b5563;margin:14px 0}.brand{display:flex;align-items:center;gap:12px}.brand img{width:58px;height:58px;object-fit:contain;border-radius:50%;background:#111}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0}.login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 20% 10%,#fff 0,#f5f6f8 42%,#eceff3 100%)}.login-card{width:min(420px,100%);background:#fff;border:1px solid var(--line);border-radius:20px;padding:28px;box-shadow:0 20px 60px rgba(24,32,45,.10)}.login-card .btn{width:100%;margin-top:16px;padding:13px}.shell{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}.sidebar{background:var(--nav);color:#fff;padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}.sidebar .brand{padding:6px 6px 20px;border-bottom:1px solid #30343d}.sidebar .brand img{width:48px;height:48px}.sidebar .brand h1{font-size:18px}.sidebar .brand p{font-size:11px;color:#adb5c2}.nav{display:grid;gap:5px;padding-top:18px}.nav button{width:100%;border:0;background:transparent;color:#c7ced8;text-align:left;padding:11px 12px;border-radius:9px;cursor:pointer;font-weight:650}.nav button:hover,.nav button.active{background:var(--nav2);color:#fff}.nav button.active{box-shadow:inset 3px 0 0 var(--accent)}.side-user{margin-top:auto;border-top:1px solid #30343d;padding:16px 6px 2px}.side-user b{display:block;font-size:14px}.side-user .muted{font-size:12px;color:#9ca5b3;margin:3px 0 10px}.side-user .btn{width:100%;background:#2a2e36;border-color:#3a3f49;color:#fff}.main{min-width:0}.topbar{height:70px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:9}.topbar h2{margin:0;font-size:20px}.topbar .muted{font-size:13px;margin:2px 0 0}.mobile-menu{display:none}.content{max-width:1180px;padding:26px 28px 50px}.view{display:none}.view.active{display:block}.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:18px}.page-head h1{font-size:27px;margin:0 0 4px}.page-head p{margin:0}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;margin-bottom:18px}.card h2{font-size:18px;margin:0 0 5px}.card>.btn,.field>.btn{width:100%;margin-top:9px}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase}.kpi strong{display:block;font-size:25px;margin-top:5px}.tableWrap{overflow:auto;border:1px solid var(--line);border-radius:11px;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}th,td{padding:11px 12px;border-bottom:1px solid #eceff2;text-align:left}th{background:#f7f8fa;color:#566070;font-size:11px;text-transform:uppercase;letter-spacing:.04em}tbody tr:last-child td{border-bottom:0}.tableWrap .btn{width:auto!important;padding:7px 9px!important;margin:2px!important;font-size:12px}.summary{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.pill{padding:7px 11px;border-radius:999px;background:#f0f2f4;border:1px solid #e3e6e9;font-weight:750;font-size:13px}.questions{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}.q{padding:9px 6px;border:1px solid #e0e5ea;border-radius:10px;text-align:center;background:#fff;min-width:0}.q b{display:block;font-size:10px;color:#687482}.q .ans{font-size:18px;font-weight:800}.q small{font-size:9px}.q.mult{background:#fff8eb}.q.blank{background:#f4f5f6}.q.wrong{outline:2px solid #ef4444;outline-offset:-1px}.q.correct{outline:2px solid #22a653;outline-offset:-1px}.q.lowconf{background:#fffbea;outline:2px solid #d69e2e;outline-offset:-1px}.reviewBox{display:none;margin:12px 0;padding:12px 14px;border-radius:10px;background:#fff8e6;border:1px solid #f1d48a;color:#704f00}.reviewBox b{display:block;margin-bottom:5px}#preview{display:none;width:100%;max-height:58vh;object-fit:contain;border-radius:12px;background:#111;margin-top:14px}.scanner-focus{border-top:3px solid var(--accent)}code{background:#f1f3f5;padding:2px 5px;border-radius:5px}
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--bg:#f5f6f8;--surface:#fff;--ink:#18202d;--muted:#697386;--line:#e5e8ed;--nav:#171a20;--nav2:#22262e;--accent:#c69a63;--ok:#198754;--danger:#c53d3d}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink)}button,input,select,textarea{font:inherit}.hidden{display:none}.muted{color:var(--muted);line-height:1.5}.status{display:none;padding:11px 13px;border-radius:10px;margin-top:12px;font-size:14px;font-weight:650}.status.error{background:#fff1f1;color:#a52828;border:1px solid #ffd7d7}.status.ok{background:#eefaf1;color:#166534;border:1px solid #ccefd5}.btn{border:0;border-radius:10px;padding:11px 14px;font-weight:750;cursor:pointer;background:var(--nav);color:#fff;transition:.15s}.btn:hover:not(:disabled){opacity:.9}.btn.secondary{background:#f3f4f6;color:#273142;border:1px solid #e1e4e8}.btn:disabled{opacity:.45;cursor:not-allowed}.field{margin-top:14px}.field label{display:block;font-size:13px;font-weight:750;margin-bottom:6px}input[type=file]{display:none}input:not([type=file]),select,textarea{width:100%!important;border:1px solid #d7dce2!important;border-radius:10px!important;padding:11px 12px!important;background:#fff;outline:none;font-size:15px!important}input:focus,select:focus,textarea:focus{border-color:#9d7b52!important;box-shadow:0 0 0 3px rgba(198,154,99,.14)}textarea{min-height:88px;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.guide{background:#f8f9fb;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:12px 14px;line-height:1.55;color:#4b5563;margin:14px 0}.brand{display:flex;align-items:center;gap:12px}.brand img{width:58px;height:58px;object-fit:contain;border-radius:50%;background:#111}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0}.login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 20% 10%,#fff 0,#f5f6f8 42%,#eceff3 100%)}.login-card{width:min(420px,100%);background:#fff;border:1px solid var(--line);border-radius:20px;padding:28px;box-shadow:0 20px 60px rgba(24,32,45,.10)}.login-card .btn{width:100%;margin-top:16px;padding:13px}.shell{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}.sidebar{background:var(--nav);color:#fff;padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}.sidebar .brand{padding:6px 6px 20px;border-bottom:1px solid #30343d}.sidebar .brand img{width:48px;height:48px}.sidebar .brand h1{font-size:18px}.sidebar .brand p{font-size:11px;color:#adb5c2}.nav{display:grid;gap:5px;padding-top:18px}.nav button{width:100%;border:0;background:transparent;color:#c7ced8;text-align:left;padding:11px 12px;border-radius:9px;cursor:pointer;font-weight:650}.nav button:hover,.nav button.active{background:var(--nav2);color:#fff}.nav button.active{box-shadow:inset 3px 0 0 var(--accent)}.side-user{margin-top:auto;border-top:1px solid #30343d;padding:16px 6px 2px}.side-user b{display:block;font-size:14px}.side-user .muted{font-size:12px;color:#9ca5b3;margin:3px 0 10px}.side-user .btn{width:100%;background:#2a2e36;border-color:#3a3f49;color:#fff}.main{min-width:0}.topbar{height:70px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:9}.topbar h2{margin:0;font-size:20px}.topbar .muted{font-size:13px;margin:2px 0 0}.mobile-menu{display:none}.content{max-width:1180px;padding:26px 28px 50px}.view{display:none}.view.active{display:block}.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:18px}.page-head h1{font-size:27px;margin:0 0 4px}.page-head p{margin:0}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;margin-bottom:18px}.card h2{font-size:18px;margin:0 0 5px}.card>.btn,.field>.btn{width:100%;margin-top:9px}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase}.kpi strong{display:block;font-size:25px;margin-top:5px}.tableWrap{overflow:auto;border:1px solid var(--line);border-radius:11px;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}th,td{padding:11px 12px;border-bottom:1px solid #eceff2;text-align:left}th{background:#f7f8fa;color:#566070;font-size:11px;text-transform:uppercase;letter-spacing:.04em}tbody tr:last-child td{border-bottom:0}.tableWrap .btn{width:auto!important;padding:7px 9px!important;margin:2px!important;font-size:12px}.summary{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.pill{padding:7px 11px;border-radius:999px;background:#f0f2f4;border:1px solid #e3e6e9;font-weight:750;font-size:13px}.questions{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}.q{padding:9px 6px;border:1px solid #e0e5ea;border-radius:10px;text-align:center;background:#fff;min-width:0}.q b{display:block;font-size:10px;color:#687482}.q .ans{font-size:18px;font-weight:800}.q small{font-size:9px}.q.mult{background:#fff8eb}.q.blank{background:#f4f5f6}.q.wrong{outline:2px solid #ef4444;outline-offset:-1px}.q.correct{outline:2px solid #22a653;outline-offset:-1px}.q.lowconf{background:#fffbea;outline:2px solid #d69e2e;outline-offset:-1px}.reviewBox{display:none;margin:12px 0;padding:12px 14px;border-radius:10px;background:#fff8e6;border:1px solid #f1d48a;color:#704f00}.reviewBox b{display:block;margin-bottom:5px}.reviewIntro{font-size:13px;line-height:1.45;margin-bottom:10px}.reviewList{display:grid;gap:10px;margin-top:10px}.reviewItem{background:#fff;border:1px solid #ead8a4;border-radius:10px;padding:10px}.reviewItemHead{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}.reviewItemHead strong{font-size:14px}.reviewMeta{font-size:11px;opacity:.8}.reviewChoices{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:8px}.reviewChoice{border:1px solid #cbd3da;background:#fff;border-radius:8px;padding:8px 4px;font-weight:800;cursor:pointer;font-size:12px}.reviewChoice:hover{border-color:#1d4ed8}.reviewChoice.active{outline:2px solid #1d4ed8;background:#eef4ff}.reviewChoice.blankChoice,.reviewChoice.multChoice{grid-column:span 2}.reviewDone{font-size:11px;color:#16733a;font-weight:700;margin-top:7px}@media(max-width:700px){.reviewChoices{grid-template-columns:repeat(5,minmax(0,1fr))}}#preview{display:none;width:100%;max-height:58vh;object-fit:contain;border-radius:12px;background:#111;margin-top:14px}.scanner-focus{border-top:3px solid var(--accent)}code{background:#f1f3f5;padding:2px 5px;border-radius:5px}
 @media(max-width:800px){.shell{display:block}.sidebar{height:auto;position:sticky;top:0;z-index:20;padding:10px 12px;display:block}.sidebar>.brand,.sidebar>.nav,.sidebar>.side-user{display:none}.mobile-menu{display:flex;align-items:center;justify-content:space-between}.mobile-menu .brand{display:flex;border:0;padding:0}.mobile-menu .brand img{width:38px;height:38px}.mobile-menu .brand h1{font-size:16px}.mobile-menu button{background:#2a2e36;color:#fff;border:0;border-radius:9px;padding:9px 12px}.sidebar.open>.nav,.sidebar.open>.side-user{display:grid}.sidebar.open>.side-user{display:block}.sidebar.open .nav{padding-top:12px}.topbar{display:none}.content{padding:18px 12px 36px}.grid2,.row,.kpis{grid-template-columns:1fr}.questions{grid-template-columns:repeat(4,1fr)}.page-head h1{font-size:23px}}
 </style>
 </head><body>
@@ -35,7 +35,7 @@ document.querySelector('#loginPass').addEventListener('keydown',e=>{if(e.key==='
 document.querySelector('#logoutBtn').addEventListener('click',async()=>{await fetch('/api/auth/logout',{method:'POST'});showLogin();});
 const photo=document.querySelector('#photo'), preview=document.querySelector('#preview'), scanBtn=document.querySelector('#scan'), statusBox=document.querySelector('#status');
 const resultCard=document.querySelector('#resultCard'), questionsBox=document.querySelector('#questions'), summary=document.querySelector('#summary'), keyBox=document.querySelector('#key'), keyInfo=document.querySelector('#keyInfo'), questionCountBox=document.querySelector('#questionCount'), reviewBox=document.querySelector('#reviewBox'), confirmReview=document.querySelector('#confirmReview');
-let file=null, lastResult=null, reviewConfirmed=false;
+let file=null, lastResult=null, reviewConfirmed=false, reviewSelections={};
 const classSelect=document.querySelector('#classSelect'), studentSelect=document.querySelector('#studentSelect'), examName=document.querySelector('#examName'), saveResultBtn=document.querySelector('#saveResult'), saveStatus=document.querySelector('#saveStatus');
 const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary');
 
@@ -86,6 +86,7 @@ photo.addEventListener('change',()=>{
   resultCard.style.display='none';
   lastResult=null;
   reviewConfirmed=false;
+  reviewSelections={};
   reviewBox.style.display='none';
   confirmReview.style.display='none';
   updateKeyState();
@@ -105,61 +106,91 @@ function render(data){
 
   let correct=0, wrong=0, mult=0, blank=0;
   questionsBox.innerHTML='';
-  reviewConfirmed=false;
   const lowQuestions=[];
-  data.questions.filter(q=>q.number<=count).forEach(q=>{
+  const allQuestions=data.questions.filter(q=>q.number<=count);
+
+  allQuestions.forEach(q=>{
     const el=document.createElement('div');
     el.className='q';
     const expected=key[q.number-1];
-    let label=q.answer || (q.status==='MULT'?'ANULADA':'—');
+    const label=q.answer || (q.status==='MULT'?'ANULADA':'—');
 
     if(q.status==='MULT'){el.classList.add('mult'); mult++;}
     if(q.status==='BLANK'){el.classList.add('blank'); blank++;}
 
     const isCorrect=q.status==='OK' && q.answer===expected;
-    if(isCorrect){
-      correct++;
-      el.classList.add('correct');
-    }else{
-      wrong++;
-      el.classList.add('wrong');
-    }
+    if(isCorrect){ correct++; el.classList.add('correct'); }
+    else { wrong++; el.classList.add('wrong'); }
+
     const low=Array.isArray(data.low_confidence_questions) && data.low_confidence_questions.includes(q.number);
     if(low){el.classList.add('lowconf'); lowQuestions.push(q.number);}
 
     const detail=isCorrect ? '✓ CERTA' : `✗ ERRADA · correta: ${expected}`;
     const conf=(q.confidence!=null && q.status==='OK') ? `<small style="display:block;margin-top:3px;opacity:.75">Confiança: ${Math.round(q.confidence*100)}%</small>` : '';
-    el.innerHTML=`<b>Questão ${q.number}</b><span class="ans">${label}</span><small style="display:block;margin-top:4px;font-weight:700">${detail}</small>${conf}`;
+    const reviewTag=Object.prototype.hasOwnProperty.call(reviewSelections,q.number) ? `<small style="display:block;margin-top:3px;color:#16733a;font-weight:800">✓ Revisada manualmente</small>` : '';
+    el.innerHTML=`<b>Questão ${q.number}</b><span class="ans">${label}</span><small style="display:block;margin-top:4px;font-weight:700">${detail}</small>${conf}${reviewTag}`;
     questionsBox.appendChild(el);
   });
+
   if(lowQuestions.length){
     reviewBox.style.display='block';
-    reviewBox.innerHTML=`<b>⚠️ Revisão recomendada</b>O scanner identificou baixa confiança nas questões ${lowQuestions.join(', ')}. Confira essas questões na foto antes de salvar o resultado.`;
-    confirmReview.style.display='block';
-    saveResultBtn.disabled=true;
+    const pending=lowQuestions.filter(n=>!Object.prototype.hasOwnProperty.call(reviewSelections,n));
+    reviewBox.innerHTML=`
+      <b>⚠️ Revisão manual das questões com baixa confiança</b>
+      <div class="reviewIntro">Confira essas questões diretamente na foto. Para cada uma, selecione a alternativa que o aluno realmente marcou. Se não houver marca válida, use <b>Em branco</b>; se houver mais de uma marca, use <b>Anulada</b>.</div>
+      <div class="reviewList">
+        ${lowQuestions.map(number=>{
+          const q=allQuestions.find(x=>x.number===number);
+          const current=q?.answer || (q?.status==='MULT'?'MULT':q?.status==='BLANK'?'BLANK':'');
+          const shown=Object.prototype.hasOwnProperty.call(reviewSelections,number) ? reviewSelections[number] : current;
+          const expected=key[number-1];
+          return `<div class="reviewItem">
+            <div class="reviewItemHead"><strong>Questão ${number}</strong><span class="reviewMeta">Scanner: ${current || '—'} · Gabarito: ${expected}</span></div>
+            <div class="reviewChoices" data-review-number="${number}">
+              ${['A','B','C','D','E'].map(letter=>`<button type="button" class="reviewChoice ${shown===letter?'active':''}" data-review-answer="${letter}">${letter}</button>`).join('')}
+              <button type="button" class="reviewChoice blankChoice ${shown==='BLANK'?'active':''}" data-review-answer="BLANK">Em branco</button>
+              <button type="button" class="reviewChoice multChoice ${shown==='MULT'?'active':''}" data-review-answer="MULT">Anulada</button>
+            </div>
+            ${Object.prototype.hasOwnProperty.call(reviewSelections,number)?'<div class="reviewDone">✓ Conferida pelo professor</div>':''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:12px;font-weight:700">${pending.length ? `Ainda falta conferir: ${pending.join(', ')}.` : '✓ Todas as questões sinalizadas foram conferidas. O salvamento está liberado.'}</div>
+    `;
+    reviewBox.querySelectorAll('[data-review-answer]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const number=Number(btn.closest('[data-review-number]').dataset.reviewNumber);
+        applyReview(number,btn.dataset.reviewAnswer);
+      });
+    });
+    confirmReview.style.display=pending.length ? 'none' : 'block';
+    confirmReview.textContent='✓ Confirmar revisão e liberar salvamento';
+    saveResultBtn.disabled=Boolean(pending.length) || !studentSelect.value;
   }else{
     reviewBox.style.display='none';
     confirmReview.style.display='none';
+    saveResultBtn.disabled=!studentSelect.value;
   }
 
   summary.innerHTML='';
-  const pills=[
-    `Acertos: ${correct}`,
-    `Erros: ${wrong}`,
-    `Anuladas: ${mult}`,
-    `Em branco: ${blank}`,
-    `Nota: ${(correct/count*10).toFixed(1)}`
-  ];
-  pills.forEach(t=>{
-    const p=document.createElement('span');
-    p.className='pill';
-    p.textContent=t;
-    summary.appendChild(p);
+  [`Acertos: ${correct}`,`Erros: ${wrong}`,`Anuladas: ${mult}`,`Em branco: ${blank}`,`Nota: ${(correct/count*10).toFixed(1)}`].forEach(t=>{
+    const p=document.createElement('span'); p.className='pill'; p.textContent=t; summary.appendChild(p);
   });
   resultCard.style.display='block';
   if(!lowQuestions.length) saveResultBtn.disabled=!studentSelect.value;
   saveStatus.style.display='none'; lastSavedResultId=null; document.querySelector('#exportSavedPdf').style.display='none';
   resultCard.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function applyReview(number,value){
+  if(!lastResult)return;
+  const q=lastResult.questions.find(x=>Number(x.number)===number);
+  if(!q)return;
+  if(value==='BLANK'){ q.status='BLANK'; q.answer=null; }
+  else if(value==='MULT'){ q.status='MULT'; q.answer=null; }
+  else { q.status='OK'; q.answer=value; }
+  reviewSelections[number]=value;
+  render(lastResult);
 }
 
 keyBox.addEventListener('input',updateKeyState);
@@ -230,7 +261,7 @@ confirmReview.addEventListener('click',()=>{
   reviewConfirmed=true;
   confirmReview.style.display='none';
   reviewBox.style.display='block';
-  reviewBox.innerHTML='<b>✓ Revisão confirmada</b>O resultado foi conferido e pode ser salvo.';
+  reviewBox.innerHTML='<b>✓ Revisão confirmada</b>As questões de baixa confiança foram conferidas manualmente. O resultado pode ser salvo.';
   saveResultBtn.disabled=!studentSelect.value;
 });
 
