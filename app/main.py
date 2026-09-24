@@ -34,7 +34,7 @@ def bootstrap_admin():
     finally: db.close()
 bootstrap_admin()
 
-app = FastAPI(title='EDUSCANNER')
+app = FastAPI(title='ScoreView')
 app.mount('/static', StaticFiles(directory=BASE_DIR / 'static'), name='static')
 @app.get('/')
 def home(): return FileResponse(BASE_DIR / 'static' / 'index.html')
@@ -151,7 +151,7 @@ def _pdf_resultado(r: Resultado, turma: Turma) -> BytesIO:
         ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#d6d9dc')), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
         ('LEFTPADDING',(0,0),(-1,-1),7), ('RIGHTPADDING',(0,0),(-1,-1),7), ('TOPPADDING',(0,0),(-1,-1),7), ('BOTTOMPADDING',(0,0),(-1,-1),7),
     ]))
-    story += [table, Spacer(1, 8*mm), Paragraph('Documento gerado pelo EduScanner. Relatório para conferência e uso administrativo.', sub)]
+    story += [table, Spacer(1, 8*mm), Paragraph('Documento gerado pelo ScoreView. Relatório para conferência e uso administrativo.', sub)]
     doc.build(story)
     out.seek(0)
     return out
