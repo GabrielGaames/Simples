@@ -38,6 +38,3 @@ A primeira linha deve conter as colunas:
 ## Rodar local
 `pip install -r requirements.txt`
 `uvicorn app.main:app --reload`
-
-
-Atualização: scanner ajustado para cartão EduScanner 45Q com fallback de calibração de página inteira.

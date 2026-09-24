@@ -188,7 +188,7 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
     if not aluno: raise HTTPException(404,'Aluno não encontrado.')
     if not can_access_turma(user,aluno.turma_id): raise HTTPException(403,'Você não tem acesso a este aluno.')
     count=payload.quantidade_questoes
-    if count not in (20,30,40) or len(payload.gabarito)!=count: raise HTTPException(400,'Quantidade/gabarito inválido.')
+    if count not in (20,30,45) or len(payload.gabarito)!=count: raise HTTPException(400,'Quantidade/gabarito inválido.')
     qs=sorted(payload.questions,key=lambda q:int(q.get('number',0)))[:count]
     if len(qs)<count: raise HTTPException(400,'Leitura incompleta do cartão.')
     correct=mult=blank=0;answers=[]

@@ -3,19 +3,18 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-# Perfil para o cartão ENEM PARA TODOS / PUC Goiás com 45 questões.
-# A normalização usa o retângulo interno estável do formulário.
-WARP_W = 1000
-WARP_H = 1325
-
-# O cartão possui 3 blocos de 15 questões.
-# Cada bloco possui cinco alternativas A-E.
+# Canonical response-grid geometry for the ENEM PARA TODOS / PUC Goiás
+# 45-question card. We deliberately warp only the response grid, not the
+# whole sheet, so header symbols and the "COMO PREENCHER" examples cannot
+# be interpreted as answers.
+GRID_W = 900
+GRID_H = 760
 BLOCK_X = np.array([
-    [143, 178, 213, 248, 283],
-    [462, 497, 532, 567, 602],
-    [782, 817, 852, 887, 922],
+    [120, 159, 198, 236, 274],
+    [421, 460, 499, 537, 574],
+    [724, 763, 801, 838, 877],
 ], dtype=np.float32)
-Y_CENTERS = np.linspace(421, 1204, 15, dtype=np.float32)
+Y_CENTERS = np.linspace(70, 731, 15, dtype=np.float32)
 LETTERS = "ABCDE"
 
 
@@ -27,141 +26,140 @@ def _order_points(points: np.ndarray) -> np.ndarray:
     points = points.astype(np.float32)
     s = points.sum(axis=1)
     d = np.diff(points, axis=1).reshape(-1)
-    return np.array(
-        [
-            points[np.argmin(s)],
-            points[np.argmin(d)],
-            points[np.argmax(s)],
-            points[np.argmax(d)],
-        ],
-        dtype=np.float32,
-    )
+    return np.array([
+        points[np.argmin(s)],      # TL
+        points[np.argmin(d)],      # TR
+        points[np.argmax(s)],      # BR
+        points[np.argmax(d)],      # BL
+    ], dtype=np.float32)
 
 
-def _find_reference_rectangle(image: np.ndarray) -> tuple[np.ndarray, float, float]:
-    """Localiza o retângulo impresso usado como referência geométrica.
+def _response_block_candidates(image: np.ndarray) -> list[np.ndarray]:
+    """Find the three printed response rectangles.
 
-    Em vez de tentar adivinhar a folha inteira, usamos um retângulo interno do
-    formulário, que se mostrou mais estável nas fotos reais.
+    These rectangles are a much stronger and safer reference than arbitrary
+    circles: each contains exactly 15 questions and five answer columns.
     """
-    h, w = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    binary = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        31,
-        11,
-    )
-    binary = cv2.dilate(
-        binary,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
-        iterations=1,
-    )
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edge_maps = [
+        cv2.Canny(blurred, 50, 140),
+        cv2.Canny(blurred, 80, 180),
+    ]
 
-    contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    candidates: list[tuple[float, float, np.ndarray, float, float]] = []
-
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if not (0.25 * h * w < area < 0.90 * h * w):
-            continue
-
-        perimeter = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-        if len(approx) != 4:
-            continue
-
-        ordered = _order_points(approx.reshape(4, 2))
-        top = np.linalg.norm(ordered[1] - ordered[0])
-        bottom = np.linalg.norm(ordered[2] - ordered[3])
-        left = np.linalg.norm(ordered[3] - ordered[0])
-        right = np.linalg.norm(ordered[2] - ordered[1])
-        width = (top + bottom) / 2.0
-        height = (left + right) / 2.0
-        if height <= 1:
-            continue
-
-        ratio = width / height
-        area_ratio = area / float(h * w)
-
-        # O retângulo de referência fica perto de 0,755 após projeção frontal.
-        if 0.72 < ratio < 0.90:
-            candidates.append((abs(ratio - 0.755), -area, ordered, ratio, area_ratio))
-
-    if not candidates:
-        # Fallback para fotos de celular: alguns aparelhos deixam a folha inteira
-        # com pouco contraste e o retângulo interno não aparece bem.
-        # Usa a maior área clara da folha como referência.
-        light = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)[1]
-        contours, _ = cv2.findContours(light, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        fallback = []
+    h, w = gray.shape
+    raw: list[tuple[float, np.ndarray]] = []
+    for edges in edge_maps:
+        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area < 0.35 * h * w:
+            if not (0.035 * h * w < area < 0.22 * h * w):
                 continue
             peri = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.03 * peri, True)
-            if len(approx) == 4:
-                fallback.append((area, _order_points(approx.reshape(4, 2))))
-        if fallback:
-            _, ordered = max(fallback, key=lambda x: x[0])
-            return ordered, 0.755, max(a / float(h*w) for a, _ in fallback)
+            approx = cv2.approxPolyDP(contour, 0.025 * peri, True)
+            if len(approx) != 4:
+                continue
+            pts = _order_points(approx.reshape(4, 2))
+            width = (np.linalg.norm(pts[1] - pts[0]) + np.linalg.norm(pts[2] - pts[3])) / 2
+            height = (np.linalg.norm(pts[3] - pts[0]) + np.linalg.norm(pts[2] - pts[1])) / 2
+            if height < 1:
+                continue
+            ratio = width / height
+            cy = float(np.mean(pts[:, 1]))
+            if not (0.28 < ratio < 0.50):
+                continue
+            if not (0.25 * h < cy < 0.95 * h):
+                continue
+            raw.append((area, pts))
 
-        # Fallback final: usa a própria imagem inteira como cartão.
-        # O modelo EduScanner 45Q possui grade fixa; a perspectiva pode ser
-        # corrigida sem depender das linhas internas do formulário.
-        margin_x = 0.04 * w
-        margin_y = 0.03 * h
-        return np.array([
-            [margin_x, margin_y],
-            [w - margin_x, margin_y],
-            [w - margin_x, h - margin_y],
-            [margin_x, h - margin_y],
-        ], dtype=np.float32), 0.755, 1.0
+    # Remove duplicate contours representing the same printed rectangle.
+    raw.sort(key=lambda x: x[0], reverse=True)
+    chosen: list[np.ndarray] = []
+    for area, pts in raw:
+        cx = float(np.mean(pts[:, 0]))
+        cy = float(np.mean(pts[:, 1]))
+        if any(abs(cx - float(np.mean(q[:, 0]))) < 45 and abs(cy - float(np.mean(q[:, 1]))) < 45 for q in chosen):
+            continue
+        chosen.append(pts)
+        if len(chosen) >= 3:
+            break
 
-    candidates.sort(key=lambda item: (item[0], item[1]))
-    _, _, ordered, ratio, area_ratio = candidates[0]
-
-    # Preferimos rejeitar uma foto ruim a gerar leitura incorreta.
-    if area_ratio < 0.43:
-        raise ScanError("O cartão está muito longe. Aproxime a câmera e tente novamente.")
-    if not (0.72 < ratio < 0.775):
-        raise ScanError("A foto está muito inclinada. Tire a foto mais de cima, deixando a folha mais reta.")
-
-    return ordered, ratio, area_ratio
-
-
-def _warp(image: np.ndarray) -> tuple[np.ndarray, dict]:
-    points, ratio, area_ratio = _find_reference_rectangle(image)
-    target = np.array(
-        [[0, 0], [WARP_W - 1, 0], [WARP_W - 1, WARP_H - 1], [0, WARP_H - 1]],
-        dtype=np.float32,
-    )
-    matrix = cv2.getPerspectiveTransform(points, target)
-    warped = cv2.warpPerspective(image, matrix, (WARP_W, WARP_H))
-    return warped, {"ratio": float(ratio), "area_ratio": float(area_ratio)}
+    # We want exactly three blocks, ordered left-to-right.
+    if len(chosen) == 3:
+        chosen.sort(key=lambda p: float(np.mean(p[:, 0])))
+        return chosen
+    return []
 
 
-def _bubble_score(gray: np.ndarray, hsv: np.ndarray, x: float, y: float, radius: int = 11) -> float:
-    """Compara o centro da bolha com o fundo local.
+def _warp_response_grid(image: np.ndarray) -> tuple[np.ndarray, dict]:
+    blocks = _response_block_candidates(image)
+    if len(blocks) != 3:
+        raise ScanError(
+            "Não consegui localizar os três blocos de respostas (01–15, 16–30 e 31–45). "
+            "Fotografe a folha inteira, deixando o cartão bem visível e com boa luz."
+        )
 
-    Isso aceita marcações pretas, azuis e vermelhas e reduz o efeito de sombras.
-    """
+    left, middle, right = blocks
+    # Outer quadrilateral of the response area. This ignores everything above
+    # the answer grid, including the instructional bubbles.
+    src = np.array([
+        left[0],       # left TL
+        right[1],      # right TR
+        right[2],      # right BR
+        left[3],       # left BL
+    ], dtype=np.float32)
+    dst = np.array([
+        [0, 0],
+        [GRID_W - 1, 0],
+        [GRID_W - 1, GRID_H - 1],
+        [0, GRID_H - 1],
+    ], dtype=np.float32)
+    matrix = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(image, matrix, (GRID_W, GRID_H), flags=cv2.INTER_CUBIC)
+
+    return warped, {
+        "response_grid": True,
+        "blocks_found": 3,
+        "grid_size": [GRID_W, GRID_H],
+    }
+
+
+def _bubble_score(gray: np.ndarray, hsv: np.ndarray, x: float, y: float, radius: int = 8) -> float:
     h, w = gray.shape
+    x = float(np.clip(x, radius + 1, w - radius - 2))
+    y = float(np.clip(y, radius + 1, h - radius - 2))
     yy, xx = np.ogrid[:h, :w]
     distance2 = (xx - x) ** 2 + (yy - y) ** 2
     inside = distance2 <= radius * radius
-    background = (distance2 <= (2.4 * radius) ** 2) & (distance2 >= (1.6 * radius) ** 2)
+    background = (distance2 <= (2.7 * radius) ** 2) & (distance2 >= (1.65 * radius) ** 2)
 
-    center_gray = float(np.mean(gray[inside]))
+    center_gray = float(np.median(gray[inside]))
     local_gray = float(np.median(gray[background]))
-    center_saturation = float(np.mean(hsv[:, :, 1][inside]))
+    center_sat = float(np.median(hsv[:, :, 1][inside]))
 
-    contrast = max(0.0, (local_gray - center_gray) / 255.0)
-    color_bonus = 0.30 * (center_saturation / 255.0)
-    return contrast + color_bonus
+    darkness = max(0.0, (local_gray - center_gray) / 255.0)
+    color = 0.18 * (center_sat / 255.0)
+    return darkness + color
+
+
+def _classify(row_scores: np.ndarray) -> tuple[str, str | None]:
+    order = np.argsort(row_scores)[::-1]
+    best_idx = int(order[0])
+    second_idx = int(order[1])
+    best = float(row_scores[best_idx])
+    second = float(row_scores[second_idx])
+
+    # Empty circles normally score near zero; a filled circle is substantially
+    # darker. The absolute floor protects against table lines and shadows.
+    marked = best >= 0.18
+    second_marked = second >= 0.18 and second >= best * 0.55
+
+    if not marked:
+        return "BLANK", None
+    if second_marked:
+        return "MULT", None
+    return "OK", LETTERS[best_idx]
 
 
 def scan_card(image_bytes: bytes) -> dict:
@@ -170,63 +168,31 @@ def scan_card(image_bytes: bytes) -> dict:
     if image is None:
         raise ScanError("Imagem inválida.")
 
-    # Evita imagens minúsculas/compressão excessiva.
-    if min(image.shape[:2]) < 700:
+    if min(image.shape[:2]) < 650:
         raise ScanError("A foto está com resolução muito baixa. Tire outra foto mais próxima.")
 
-    warped, geometry = _warp(image)
+    warped, geometry = _warp_response_grid(image)
     gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
     hsv = cv2.cvtColor(warped, cv2.COLOR_BGR2HSV)
 
-    scores = []
+    questions = []
     for q_index in range(45):
         block = q_index // 15
         row = q_index % 15
-        row_scores = [
+        row_scores = np.array([
             _bubble_score(gray, hsv, float(BLOCK_X[block][option]), float(Y_CENTERS[row]))
             for option in range(5)
-        ]
-        scores.append(row_scores)
-
-    scores_np = np.asarray(scores, dtype=np.float32)
-    flattened = scores_np.reshape(-1)
-    baseline = float(np.median(flattened))
-    mad = float(np.median(np.abs(flattened - baseline)))
-    threshold = min(0.20, max(0.08, baseline + 5.0 * mad))
-
-    questions = []
-    for number, row_scores in enumerate(scores_np, start=1):
-        order = np.argsort(row_scores)[::-1]
-        best_idx = int(order[0])
-        second_idx = int(order[1])
-        best = float(row_scores[best_idx])
-        second = float(row_scores[second_idx])
-
-        # Duas marcações: anula a questão.
-        # A segunda marca pode ser um pouco mais fraca, por isso há uma regra relativa.
-        multiple = best > threshold and second > max(0.11, 0.55 * best)
-
-        if multiple:
-            status = "MULT"
-            answer = None
-        elif best > threshold:
-            status = "OK"
-            answer = LETTERS[best_idx]
-        else:
-            status = "BLANK"
-            answer = None
-
-        questions.append(
-            {
-                "number": number,
-                "status": status,
-                "answer": answer,
-                "scores": [round(float(v), 3) for v in row_scores],
-            }
-        )
+        ], dtype=np.float32)
+        status, answer = _classify(row_scores)
+        questions.append({
+            "number": q_index + 1,
+            "status": status,
+            "answer": answer,
+            "scores": [round(float(v), 3) for v in row_scores],
+        })
 
     return {
         "questions": questions,
-        "threshold": round(threshold, 3),
+        "threshold": 0.18,
         "geometry": geometry,
     }
