@@ -3,30 +3,27 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-# EduScanner V8 — cartão-resposta oficial CEPI-JBR / 45 questões
-# Layout baseado no novo modelo enviado pela escola em 24/09/2026.
-# Importante: o scanner ignora completamente as bolinhas de "COMO PREENCHER"
-# e os campos superiores. A leitura acontece somente nas três grades 01-15,
-# 16-30 e 31-45.
+# EduScanner V9 — cartão-resposta oficial CEPI-JBR / 45 questões
+# V9 muda somente a estratégia de localização/leitura do cartão:
+# 1) encontra diretamente as três grades de respostas na foto;
+# 2) corrige a perspectiva de CADA grade individualmente;
+# 3) lê as bolhas em coordenadas normalizadas do novo cartão.
+# Isso evita depender de uma posição fixa da folha inteira e reduz bastante
+# os erros causados por inclinação, distância, sombra e celulares diferentes.
 
 PAGE_W, PAGE_H = 768, 1024
-BLOCK_W, BLOCK_H = 220, 528
+BLOCK_W, BLOCK_H = 230, 570
 LETTERS = "ABCDE"
 
-# Retângulos relativos ao cartão oficial, depois da correção de perspectiva.
-# Cada bloco contém 15 questões e 5 alternativas.
-BLOCK_RECTS_REL = [
-    (0.0321, 0.4469, 0.3389, 0.9867),
-    (0.3598, 0.4469, 0.6611, 0.9867),
-    (0.6820, 0.4469, 0.9679, 0.9867),
-]
-
-# Centros normalizados das cinco bolhas e das 15 linhas.
-# Normalização torna a leitura tolerante a pequenas diferenças de impressão.
-X_REL = np.array([0.414, 0.545, 0.673, 0.805, 0.941], dtype=np.float32)
-Y_REL = np.array([0.081, 0.144, 0.207, 0.270, 0.333, 0.396, 0.458,
-                  0.521, 0.584, 0.646, 0.709, 0.772, 0.835, 0.898,
-                  0.961], dtype=np.float32)
+# Posição normalizada das bolhas no novo cartão CEPI-JBR.
+# As cinco colunas ficam aproximadamente em 39%, 51,5%, 65%, 78% e 90,5%
+# da largura de cada grade; as linhas acompanham as 15 questões.
+X_REL = np.array([0.390, 0.515, 0.650, 0.780, 0.905], dtype=np.float32)
+Y_REL = np.array([
+    0.086, 0.145, 0.205, 0.266, 0.328,
+    0.389, 0.450, 0.513, 0.575, 0.636,
+    0.699, 0.762, 0.825, 0.897, 0.962,
+], dtype=np.float32)
 
 
 class ScanError(Exception):
@@ -50,169 +47,218 @@ def _quad_size(quad: np.ndarray) -> tuple[float, float]:
     return float(w), float(h)
 
 
-def _find_card_quad(image: np.ndarray) -> np.ndarray | None:
-    """Detect the whole A4 card before reading answers.
+def _rectify_quad(image: np.ndarray, quad: np.ndarray,
+                  width: int = BLOCK_W, height: int = BLOCK_H) -> np.ndarray:
+    dst = np.array([
+        [0, 0], [width - 1, 0],
+        [width - 1, height - 1], [0, height - 1]
+    ], dtype=np.float32)
+    M = cv2.getPerspectiveTransform(_order_points(quad), dst)
+    return cv2.warpPerspective(
+        image, M, (width, height),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
 
-    This is more robust than trying to locate three internal rectangles in the
-    original camera image. Once the page is rectified, the official template
-    has a stable geometry regardless of phone model or camera angle.
+
+def _find_answer_block_quads(image: np.ndarray) -> list[np.ndarray]:
+    """Locate the three answer-grid rectangles directly in the camera photo.
+
+    The previous version first guessed the whole A4 page and then used fixed
+    coordinates. The new school card can be photographed with more/less
+    margin, so V9 finds the three large response grids themselves. Each grid
+    is then rectified independently.
     """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    work = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    edge_maps = [
+        cv2.Canny(work, 30, 120),
+        cv2.Canny(work, 45, 150),
+        cv2.Canny(work, 60, 180),
+    ]
+
+    candidates: list[tuple[float, np.ndarray]] = []
+    for edges in edge_maps:
+        edges = cv2.morphologyEx(
+            edges, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1
+        )
+        contours, _ = cv2.findContours(
+            edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+        )
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < 0.025 * h * w or area > 0.32 * h * w:
+                continue
+
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.020 * peri, True)
+            if len(approx) != 4 or not cv2.isContourConvex(approx):
+                continue
+
+            q = _order_points(approx.reshape(4, 2))
+            qw, qh = _quad_size(q)
+            if qw < 0.10 * w or qh < 0.30 * h:
+                continue
+            ratio = qw / max(qh, 1.0)
+            if not 0.28 < ratio < 0.58:
+                continue
+
+            x_min, y_min = np.min(q, axis=0)
+            x_max, y_max = np.max(q, axis=0)
+            if y_max < 0.30 * h or y_min > 0.72 * h:
+                continue
+
+            cx = float(np.mean(q[:, 0]))
+            cy = float(np.mean(q[:, 1]))
+            # Expected positions are left / center / right, but keep broad
+            # tolerances because the card may be cropped or rotated.
+            expected_x = np.array([0.17, 0.50, 0.83]) * w
+            position_score = 1.0 - min(
+                np.min(np.abs(expected_x - cx)) / (0.22 * w), 1.0
+            )
+            shape_score = 1.0 - min(abs(ratio - 0.43) / 0.20, 1.0)
+            area_score = min(area / (0.14 * w * h), 1.0)
+            y_score = 1.0 - min(abs(cy - 0.69 * h) / (0.28 * h), 1.0)
+            score = 0.45 * position_score + 0.25 * shape_score + 0.20 * area_score + 0.10 * y_score
+            candidates.append((score, q))
+
+    if not candidates:
+        return []
+
+    # Deduplicate almost identical contours generated by the different edge
+    # maps. Prefer the highest-scoring rectangle for each x position.
+    candidates.sort(key=lambda z: z[0], reverse=True)
+    selected: list[tuple[float, np.ndarray]] = []
+    for score, q in candidates:
+        cx = float(np.mean(q[:, 0]))
+        cy = float(np.mean(q[:, 1]))
+        duplicate = False
+        for _, old in selected:
+            ocx = float(np.mean(old[:, 0]))
+            ocy = float(np.mean(old[:, 1]))
+            if abs(cx - ocx) < 0.06 * w and abs(cy - ocy) < 0.06 * h:
+                duplicate = True
+                break
+        if not duplicate:
+            selected.append((score, q))
+        if len(selected) >= 6:
+            break
+
+    if len(selected) < 3:
+        return []
+
+    # Keep the best combination of three rectangles with separated centers.
+    selected.sort(key=lambda z: np.mean(z[1][:, 0]))
+    groups: list[tuple[float, np.ndarray]] = []
+    for item in selected:
+        cx = float(np.mean(item[1][:, 0]))
+        if groups and abs(cx - float(np.mean(groups[-1][1][:, 0]))) < 0.16 * w:
+            if item[0] > groups[-1][0]:
+                groups[-1] = item
+        else:
+            groups.append(item)
+
+    if len(groups) != 3:
+        return []
+    return [q for _, q in groups]
+
+
+def _find_card_quad(image: np.ndarray) -> np.ndarray | None:
+    """Fallback whole-page detector for unusually difficult photographs."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     maps = [
-        cv2.Canny(blur, 30, 110),
-        cv2.Canny(blur, 50, 160),
-        cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                              cv2.THRESH_BINARY_INV, 41, 9),
+        cv2.Canny(blur, 20, 80),
+        cv2.Canny(blur, 40, 130),
+        cv2.adaptiveThreshold(
+            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 41, 9
+        ),
     ]
-
     candidates: list[tuple[float, np.ndarray]] = []
     for edges in maps:
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE,
-                                 np.ones((5, 5), np.uint8), iterations=2)
+                                 np.ones((7, 7), np.uint8), iterations=2)
         contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         for c in contours:
             area = cv2.contourArea(c)
-            if area < 0.22 * h * w or area > 0.98 * h * w:
+            if area < 0.25 * h * w or area > 0.97 * h * w:
                 continue
             peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.025 * peri, True)
+            approx = cv2.approxPolyDP(c, 0.03 * peri, True)
             if len(approx) != 4 or not cv2.isContourConvex(approx):
                 continue
             q = _order_points(approx.reshape(4, 2))
             qw, qh = _quad_size(q)
-            if qw <= 0 or qh <= 0:
+            ratio = qw / max(qh, 1.0)
+            if not 0.55 < ratio < 0.90:
                 continue
-            ratio = qw / qh
-            # A4 portrait ratio, allowing substantial perspective distortion.
-            if not 0.55 < ratio < 0.92:
-                continue
-            cx = float(np.mean(q[:, 0]))
-            cy = float(np.mean(q[:, 1]))
-            if not (0.05 * w < cx < 0.95 * w and 0.05 * h < cy < 0.95 * h):
-                continue
-            score = area * (1.0 - min(abs(ratio - 0.75) / 0.30, 1.0) * 0.25)
+            score = area * (1.0 - min(abs(ratio - 0.707) / 0.25, 1.0) * 0.25)
             candidates.append((score, q))
-
     if not candidates:
         return None
     candidates.sort(key=lambda x: x[0], reverse=True)
     return candidates[0][1]
 
 
-def _warp_page(image: np.ndarray, quad: np.ndarray) -> np.ndarray:
-    dst = np.array([
-        [0, 0], [PAGE_W - 1, 0],
-        [PAGE_W - 1, PAGE_H - 1], [0, PAGE_H - 1]
-    ], dtype=np.float32)
-    M = cv2.getPerspectiveTransform(_order_points(quad), dst)
-    return cv2.warpPerspective(image, M, (PAGE_W, PAGE_H),
-                              flags=cv2.INTER_CUBIC,
-                              borderMode=cv2.BORDER_REPLICATE)
-
-
 def _fallback_page(image: np.ndarray) -> np.ndarray:
-    """Fallback for photos where the outer paper contour is not closed."""
-    # Keep the same aspect ratio and use the central image. This path is only
-    # used when document detection fails; answer-block detection below still
-    # validates the actual card geometry.
     h, w = image.shape[:2]
     if w / max(h, 1) > 0.95:
-        # Landscape source: crop around the central portrait region.
         nw = int(h * 0.78)
         x0 = max((w - nw) // 2, 0)
         image = image[:, x0:x0 + nw]
     return cv2.resize(image, (PAGE_W, PAGE_H), interpolation=cv2.INTER_AREA)
 
 
-def _find_answer_blocks(page: np.ndarray) -> list[tuple[int, int, int, int]]:
-    """Validate/locate the three answer grids on the official template."""
-    gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
-    out: list[tuple[int, int, int, int]] = []
-
-    # First try the exact official geometry. This prevents the scanner from
-    # accidentally selecting the "COMO PREENCHER" circles.
-    for rx1, ry1, rx2, ry2 in BLOCK_RECTS_REL:
-        x1, y1 = round(rx1 * (PAGE_W - 1)), round(ry1 * (PAGE_H - 1))
-        x2, y2 = round(rx2 * (PAGE_W - 1)), round(ry2 * (PAGE_H - 1))
-        crop = gray[y1:y2, x1:x2]
-        if crop.size == 0:
-            continue
-        # The grid has many dark structural lines. Require a meaningful edge
-        # density but don't require the marks themselves to be present.
-        edges = cv2.Canny(crop, 50, 150)
-        density = float(np.mean(edges > 0))
-        if density >= 0.012:
-            out.append((x1, y1, x2, y2))
-
-    if len(out) == 3:
-        return out
-
-    # Fallback: detect internal portrait rectangles after page rectification.
-    edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 40, 150)
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), 1)
-    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    candidates = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if not 0.04 * PAGE_W * PAGE_H < area < 0.25 * PAGE_W * PAGE_H:
-            continue
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(approx) != 4:
-            continue
-        q = _order_points(approx.reshape(4, 2))
-        qw, qh = _quad_size(q)
-        if qh <= 0 or not 0.32 < qw / qh < 0.55:
-            continue
-        x1, y1 = np.min(q, axis=0).astype(int)
-        x2, y2 = np.max(q, axis=0).astype(int)
-        if y1 < 420 or y2 > 1010:
-            continue
-        candidates.append((area, (int(x1), int(y1), int(x2), int(y2))))
-    candidates.sort(key=lambda z: z[0], reverse=True)
-    selected: list[tuple[int, int, int, int]] = []
-    for _, rect in candidates:
-        x1, y1, x2, y2 = rect
-        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-        if any(abs(cx - (a + b) / 2) < 30 and abs(cy - (c + d) / 2) < 30
-               for a, c, b, d in selected):
-            continue
-        selected.append(rect)
-        if len(selected) == 3:
-            break
-    if len(selected) == 3:
-        return sorted(selected, key=lambda r: r[0])
-    return []
+def _page_fallback_blocks(page: np.ndarray) -> list[np.ndarray]:
+    """Use broad V9 geometry after whole-page rectification if needed."""
+    h, w = page.shape[:2]
+    rects = [
+        (0.015, 0.414, 0.326, 0.979),
+        (0.320, 0.414, 0.625, 0.979),
+        (0.630, 0.414, 0.945, 0.979),
+    ]
+    out = []
+    for x1, y1, x2, y2 in rects:
+        out.append(np.array([
+            [x1 * (w - 1), y1 * (h - 1)],
+            [x2 * (w - 1), y1 * (h - 1)],
+            [x2 * (w - 1), y2 * (h - 1)],
+            [x1 * (w - 1), y2 * (h - 1)],
+        ], dtype=np.float32))
+    return out
 
 
 def _normalize_illumination(gray: np.ndarray) -> np.ndarray:
-    # CLAHE helps with shadows, while preserving the dark center of filled
-    # circles. A mild blur reduces camera noise without erasing the marks.
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
     return cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8)).apply(gray)
 
 
 def _score(gray: np.ndarray, hsv: np.ndarray, x: float, y: float) -> float:
-    # Bubble radius in the official A4 template after normalization.
+    # The bubbles in the new card are about 9–12 px radius after block
+    # rectification. The score is deliberately based on the CENTER of the
+    # bubble, while the outer ring is used only as a local brightness reference.
     r = 8.8
     yy, xx = np.ogrid[:gray.shape[0], :gray.shape[1]]
     d2 = (xx - x) ** 2 + (yy - y) ** 2
     inside = d2 <= r * r
+    core = d2 <= (0.62 * r) ** 2
     ring = (d2 <= 2.7 * r * r) & (d2 >= 1.55 * r * r)
 
     cg = float(np.median(gray[inside]))
+    core_g = float(np.median(gray[core]))
     rg = float(np.median(gray[ring]))
     cs = float(np.median(hsv[:, :, 1][inside]))
     rs = float(np.median(hsv[:, :, 1][ring]))
 
-    # Compare the center against its own ring rather than against a global
-    # threshold. This is much less sensitive to Xiaomi/Redmi exposure changes.
     local_dark = float(np.clip((rg - cg) / 70.0, 0, 1))
+    core_dark = float(np.clip((rg - core_g) / 70.0, 0, 1))
     chroma = float(np.clip((cs - rs) / 80.0, 0, 1))
     fill = float(np.mean(gray[inside] < rg - 9))
-    return 0.68 * local_dark + 0.20 * chroma + 0.12 * fill
+    return 0.55 * local_dark + 0.20 * core_dark + 0.17 * chroma + 0.08 * fill
 
 
 def _classify(scores: np.ndarray) -> tuple[str, str | None, float]:
@@ -222,15 +268,20 @@ def _classify(scores: np.ndarray) -> tuple[str, str | None, float]:
     baseline = float(np.median(scores))
     spread = best - baseline
 
-    # A filled answer should be significantly darker than the empty printed
-    # circles. The second mark rule deliberately catches double markings.
+    # Absolute + relative tests avoid treating the printed circle outline or
+    # page shadows as a valid answer.
     marked = best >= 0.17 and spread >= 0.035
-    second_marked = second >= 0.17 and (second - baseline) >= 0.030 and second >= best * 0.72
+    second_marked = (
+        second >= 0.17
+        and (second - baseline) >= 0.030
+        and second >= best * 0.72
+    )
 
-    # Confidence combines absolute mark strength and separation from the next
-    # alternative. It is surfaced to the review UI for manual confirmation.
-    conf = float(np.clip(0.55 * min(best / 0.38, 1.0) +
-                         0.45 * ((best - second + 0.04) / 0.18), 0, 1))
+    conf = float(np.clip(
+        0.55 * min(best / 0.38, 1.0)
+        + 0.45 * ((best - second + 0.04) / 0.18),
+        0, 1
+    ))
     if not marked:
         return "BLANK", None, conf
     if second_marked:
@@ -238,34 +289,17 @@ def _classify(scores: np.ndarray) -> tuple[str, str | None, float]:
     return "OK", LETTERS[int(order[0])], conf
 
 
-def scan_card(image_bytes: bytes) -> dict:
-    raw = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(raw, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ScanError("Imagem inválida.")
-    if min(image.shape[:2]) < 650:
-        raise ScanError("A foto está com resolução muito baixa. Tire outra foto mais próxima.")
-
-    quad = _find_card_quad(image)
-    page = _warp_page(image, quad) if quad is not None else _fallback_page(image)
-    blocks = _find_answer_blocks(page)
-    if len(blocks) != 3:
-        raise ScanError(
-            "Não consegui localizar as três grades do novo cartão (01–15, 16–30 e 31–45). "
-            "Fotografe a folha inteira, mantendo o cartão plano, inteiro e com boa luz."
-        )
-
+def _scan_blocks(image: np.ndarray, blocks: list[np.ndarray], page_source: str) -> dict:
     questions = []
     block_debug = []
-    for bi, (x1, y1, x2, y2) in enumerate(blocks):
-        block = page[y1:y2, x1:x2]
-        # Use the actual block dimensions, preserving the official geometry.
+
+    for bi, block_quad in enumerate(blocks):
+        block = _rectify_quad(image, block_quad)
         gray_raw = cv2.cvtColor(block, cv2.COLOR_BGR2GRAY)
         gray = _normalize_illumination(gray_raw)
         hsv = cv2.cvtColor(block, cv2.COLOR_BGR2HSV)
-        bw = block.shape[1]
-        bh = block.shape[0]
-        block_debug.append([x1, y1, x2, y2])
+        bh, bw = gray.shape
+        block_debug.append(np.round(block_quad).astype(int).tolist())
 
         for row, yr in enumerate(Y_REL):
             y = float(yr * (bh - 1))
@@ -290,12 +324,50 @@ def scan_card(image_bytes: bytes) -> dict:
         "questions": questions,
         "threshold": 0.17,
         "geometry": {
-            "method": "official_cepi_jbr_45q_page_rectification",
-            "template": "cartao_24_09_2026",
+            "method": "v9_direct_answer_blocks",
+            "template": "cartao_cepi_jbr_novo_45q",
             "blocks_found": 3,
-            "page_size": [PAGE_W, PAGE_H],
+            "block_size": [BLOCK_W, BLOCK_H],
             "blocks": block_debug,
-            "card_detected": quad is not None,
+            "source": page_source,
         },
         "low_confidence_questions": low,
     }
+
+
+def scan_card(image_bytes: bytes) -> dict:
+    raw = np.frombuffer(image_bytes, dtype=np.uint8)
+    image = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ScanError("Imagem inválida.")
+    if min(image.shape[:2]) < 650:
+        raise ScanError(
+            "A foto está com resolução muito baixa. Tire outra foto mais próxima."
+        )
+
+    # First choice: find the three answer grids directly in the original photo.
+    direct = _find_answer_block_quads(image)
+    if len(direct) == 3:
+        return _scan_blocks(image, direct, "direct_block_detection")
+
+    # Second choice: detect the whole card, rectify it, then use broad V9
+    # coordinates. This is a fallback for photos with weak internal borders.
+    quad = _find_card_quad(image)
+    if quad is not None:
+        page = _rectify_quad(image, quad, PAGE_W, PAGE_H)
+        blocks = _find_answer_block_quads(page)
+        if len(blocks) != 3:
+            blocks = _page_fallback_blocks(page)
+        result = _scan_blocks(page, blocks, "whole_page_rectification")
+        result["geometry"]["card_detected"] = True
+        return result
+
+    # Final fallback: central resize. We still use V9 answer geometry rather
+    # than the obsolete V8 fixed coordinates.
+    page = _fallback_page(image)
+    blocks = _find_answer_block_quads(page)
+    if len(blocks) != 3:
+        blocks = _page_fallback_blocks(page)
+    result = _scan_blocks(page, blocks, "central_resize_fallback")
+    result["geometry"]["card_detected"] = False
+    return result
