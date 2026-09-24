@@ -38,3 +38,9 @@ A primeira linha deve conter as colunas:
 ## Rodar local
 `pip install -r requirements.txt`
 `uvicorn app.main:app --reload`
+
+## Scanner V4 — 45Q mobile
+
+The scanner is calibrated for the PUC Goiás / ENEM PARA TODOS 45-question response card. V4 detects the three printed response blocks (01–15, 16–30 and 31–45), rectifies each block independently, and samples only the 225 answer cells. The header and the “COMO PREENCHER” examples are outside the reading regions.
+
+The result includes a confidence value per detected answer and a list of low-confidence questions so the teacher can review before saving.
