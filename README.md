@@ -62,3 +62,8 @@ The result includes a confidence value per detected answer and a list of low-con
 - Duas marcações na mesma questão continuam sendo classificadas como `MULT` / anulada.
 - O mecanismo de revisão manual já existente permanece disponível para questões sinalizadas com baixa confiança.
 - Não é necessário alterar o fluxo de uso no celular: o professor continua fotografando o cartão pelo próprio telefone.
+
+## V10 — identificação, logos e créditos
+- A identificação de Prova / bloco agora usa uma lista fixa com Bloco 01 a 06 e os blocos 07 e 08 como simulados.
+- A interface exibe a identidade visual da escola junto ao SENAI.
+- Créditos do aplicativo: Kawan Nunes Alves (criação) e Gabriel Lúcio Da Silva Games (professor orientador).
