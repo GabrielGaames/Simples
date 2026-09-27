@@ -234,16 +234,17 @@ def _pdf_resultado(r: Resultado, turma: Turma) -> BytesIO:
     story += [table, Spacer(1, 6*mm), Paragraph('Respostas da prova', ParagraphStyle('H', parent=styles['Heading2'], fontSize=12, leading=14, spaceAfter=4))]
     respostas = (r.respostas or '').split(',')
     gabarito = (r.gabarito or '').split(',')
-    qrows = [['Questão','Resposta','Gabarito','Resultado']]
+    # No relatório individual, mostrar somente as questões efetivamente acertadas.
+    # Questões erradas, em branco ou anuladas não aparecem nesta tabela.
+    qrows = [['Questão','Resposta acertada']]
     for i in range(r.quantidade_questoes):
-        ans = respostas[i].strip().upper() if i < len(respostas) and respostas[i].strip() else '—'
-        key = gabarito[i].strip().upper() if i < len(gabarito) and gabarito[i].strip() else '—'
-        if ans == 'MULT': result = 'ANULADA'
-        elif ans == '—': result = 'EM BRANCO'
-        elif ans == key: result = 'CERTA'
-        else: result = 'ERRADA'
-        qrows.append([str(i+1), ans, key, result])
-    qt = Table(qrows, colWidths=[25*mm,35*mm,35*mm,55*mm], repeatRows=1)
+        ans = respostas[i].strip().upper() if i < len(respostas) and respostas[i].strip() else ''
+        key = gabarito[i].strip().upper() if i < len(gabarito) and gabarito[i].strip() else ''
+        if ans and ans != 'MULT' and key and ans == key:
+            qrows.append([str(i+1), ans])
+    if len(qrows) == 1:
+        qrows.append(['—', 'Nenhuma questão acertada'])
+    qt = Table(qrows, colWidths=[35*mm,55*mm], repeatRows=1)
     qt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#263746')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#d6d9dc')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),8),('PADDING',(0,0),(-1,-1),3)]))
     story += [qt, Spacer(1, 5*mm), Paragraph('Documento gerado pelo ScoreView. O ID/chamada é independente do identificador interno do banco e corresponde ao número do aluno na lista escolar.', small)]
     doc.build(story); out.seek(0); return out
@@ -383,16 +384,20 @@ def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None, db=Non
             rows.append([aluno.numero_chamada or '—',aluno.matricula,aluno.nome,aluno.status or 'ATIVO','','','','']+['—']*45+['—'])
             continue
         answers=(r.respostas or '').split(',')
+        keys=(r.gabarito or '').split(',')
         qcells=[]
         for i in range(45):
-            qcells.append(answers[i].strip().upper() if i < r.quantidade_questoes and i < len(answers) and answers[i].strip() else '—')
+            ans = answers[i].strip().upper() if i < r.quantidade_questoes and i < len(answers) and answers[i].strip() else ''
+            key = keys[i].strip().upper() if i < r.quantidade_questoes and i < len(keys) and keys[i].strip() else ''
+            # No relatório da turma, cada Qn só recebe a resposta quando ela foi acertada.
+            qcells.append(ans if ans and ans != 'MULT' and key and ans == key else '')
         rows.append([aluno.numero_chamada or '—',aluno.matricula,aluno.nome,aluno.status or 'ATIVO','X' if r.presente_1 else '', 'X' if r.ausente_1 else '', 'X' if r.presente_2 else '', 'X' if r.ausente_2 else '']+qcells+[f'{r.nota:.2f}'.replace('.',',')])
     if len(rows)==1:
         rows.append(['—','—','Nenhum resultado','','','','','']+['—']*45+['—'])
     widths=[10*mm,24*mm,42*mm,19*mm,12*mm,12*mm,12*mm,12*mm]+[5.1*mm]*45+[13*mm]
     rt=Table(rows,colWidths=widths,repeatRows=1,splitByRow=1)
     rt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#263746')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.25,colors.HexColor('#cfd4d8')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),4.7),('LEADING',(0,0),(-1,-1),5.2),('PADDING',(0,0),(-1,-1),2),('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
-    story += [Paragraph('Dados da prova',h),rt,Spacer(1,3*mm),Paragraph('Estrutura: ID/chamada · matrícula · nome · status escolar · presença/ausência nas duas chamadas · Q1–Q45 · nota. Questões acima da quantidade configurada ficam em branco.',sub)]
+    story += [Paragraph('Dados da prova',h),rt,Spacer(1,3*mm),Paragraph('Estrutura: ID/chamada · matrícula · nome · status escolar · presença/ausência nas duas chamadas · Q1–Q45 · nota. Nas colunas Q1–Q45 aparece somente a alternativa quando o aluno acertou a questão; erros, brancos e anuladas ficam em branco.',sub)]
     doc.build(story); out.seek(0); return out
 
 @app.get('/api/turmas/{turma_id}/provas')
