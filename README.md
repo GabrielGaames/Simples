@@ -62,3 +62,9 @@ The result includes a confidence value per detected answer and a list of low-con
 - Duas marcações na mesma questão continuam sendo classificadas como `MULT` / anulada.
 - O mecanismo de revisão manual já existente permanece disponível para questões sinalizadas com baixa confiança.
 - Não é necessário alterar o fluxo de uso no celular: o professor continua fotografando o cartão pelo próprio telefone.
+
+## Versão 9.2 — sincronização automática
+- Atualização imediata das listas após importação, criação/exclusão e alterações de resultados.
+- Recarregamento sem cache para endpoints GET.
+- Sincronização ao voltar para a aba/janela e a cada 60 segundos enquanto o usuário estiver logado.
+- Preserva turma, aluno e prova selecionados durante a sincronização.

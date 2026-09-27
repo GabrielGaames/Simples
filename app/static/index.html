@@ -25,7 +25,34 @@ document.querySelector('#menuToggle')?.addEventListener('click',()=>document.que
 let currentUser=null;
 let lastSavedResultId=null;
 const loginScreen=document.querySelector('#loginScreen'), appScreen=document.querySelector('#appScreen'), loginBtn=document.querySelector('#loginBtn'), loginStatus=document.querySelector('#loginStatus');
-async function apiFetch(url,opts={}){const r=await fetch(url,opts);if(r.status===401){showLogin();throw new Error('Sessão encerrada. Entre novamente.')}return r;}
+async function apiFetch(url,opts={}){
+  const options={...opts,headers:{...(opts.headers||{})}};
+  if(!options.method || options.method.toUpperCase()==='GET'){options.cache='no-store';options.headers['Cache-Control']='no-cache';}
+  const r=await fetch(url,options);
+  if(r.status===401){showLogin();throw new Error('Sessão encerrada. Entre novamente.')}
+  return r;
+}
+async function refreshData({students=true,report=true}={}){
+  const selectedClass=classSelect.value;
+  const selectedStudent=studentSelect.value;
+  const selectedExam=reportExam.value;
+  await loadClasses();
+  if(currentUser?.tipo==='admin'){await loadAdminClasses();await loadUsers();}
+  if(selectedClass && [...classSelect.options].some(o=>o.value===selectedClass)){
+    classSelect.value=selectedClass;
+    if(students){await loadStudents(); if(selectedStudent && [...studentSelect.options].some(o=>o.value===selectedStudent)) studentSelect.value=selectedStudent;}
+    if(report){
+      await loadReportExams();
+      if(selectedExam && [...reportExam.options].some(o=>o.value===selectedExam)) reportExam.value=selectedExam;
+      await showReport();
+    }
+  }else if(report){
+    reportExam.innerHTML='<option value="">Todas as provas</option>';
+    if(students){studentSelect.innerHTML='<option value="">Selecione a turma...</option>';studentSelect.disabled=true;}
+    reportBody.innerHTML='';reportSummary.innerHTML='';diagnosticText.textContent='Selecione uma turma e atualize o relatório.';diagnosticQuestions.innerHTML='';
+  }
+}
+
 function showLogin(){currentUser=null;appScreen.style.display='none';loginScreen.style.display='block';}
 async function startApp(){
   try{const r=await fetch('/api/auth/me');if(!r.ok){showLogin();return;}currentUser=await r.json();loginScreen.style.display='none';appScreen.style.display='block';document.querySelector('#currentUserName').textContent=currentUser.nome;document.querySelector('#currentUserType').textContent=currentUser.tipo==='admin'?'Administrador':'Professor';document.querySelector('#adminImportCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelector('#adminUsersCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelectorAll('.adminNav').forEach(x=>x.style.display=currentUser.tipo==='admin'?'block':'none');await loadClasses();if(currentUser.tipo==='admin'){await loadUsers();await loadAdminClasses();}}catch(e){showLogin();}
@@ -256,8 +283,8 @@ async function loadAdminClasses(){
         const r=await apiFetch(`/api/admin/turmas/${b.dataset.id}`,{method:'DELETE'}); const d=await r.json();
         if(!r.ok) throw new Error(d.detail||'Erro ao excluir turma');
         const st=document.querySelector('#classDeleteStatus'); st.className='status ok'; st.textContent=`Turma "${d.nome}" excluída. ${d.alunos_excluidos||0} aluno(s) removido(s).`; st.style.display='block';
-        await loadClasses(); await loadAdminClasses(); await loadUsers();
-        if(classSelect.value===b.dataset.id){classSelect.value=''; await loadStudents(); reportBody.innerHTML=''; reportSummary.innerHTML=''; diagnosticText.textContent='Selecione uma turma e atualize o relatório.'; diagnosticQuestions.innerHTML='';}
+        await refreshData({students:true,report:true});
+        if(classSelect.value===b.dataset.id){classSelect.value=''; await refreshData({students:true,report:true});}
       }catch(e){alert(e.message); b.disabled=false; b.textContent='Excluir turma';}
     }));
   }catch(e){body.innerHTML='<tr><td colspan="3">Não foi possível carregar as turmas.</td></tr>';}
@@ -274,7 +301,7 @@ studentsFile.addEventListener('change',()=>{importStudents.disabled=!studentsFil
 importStudents.addEventListener('click',async()=>{
   const f=studentsFile.files?.[0]; if(!f)return; importStudents.disabled=true; importStudents.textContent='Importando...';
   const fd=new FormData(); fd.append('file',f);
-  try{const r=await apiFetch('/api/alunos/importar',{method:'POST',body:fd}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro na importação'); importStatus.className='status ok'; importStatus.textContent=`Importação concluída: ${d.criados} novos, ${d.atualizados} atualizados, ${d.ignorados} ignorados.`; importStatus.style.display='block'; await loadClasses(); await loadAdminClasses();}
+  try{const r=await apiFetch('/api/alunos/importar',{method:'POST',body:fd}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro na importação'); importStatus.className='status ok'; importStatus.textContent=`Importação concluída: ${d.criados} novos, ${d.atualizados} atualizados, ${d.ignorados} ignorados.`; importStatus.style.display='block'; await refreshData({students:true,report:true});}
   catch(e){importStatus.className='status error'; importStatus.textContent=e.message; importStatus.style.display='block';}
   finally{importStudents.textContent='Importar planilha'; importStudents.disabled=false;}
 });
@@ -292,7 +319,7 @@ saveResultBtn.addEventListener('click',async()=>{
   if(!examName.value){saveStatus.textContent='Selecione o bloco da prova antes de salvar.';saveStatus.className='status error';return;}
   const body={aluno_id:Number(studentSelect.value),prova_nome:examName.value,quantidade_questoes:count,gabarito:key,questions:lastResult.questions,presente_1:attendance1.value==='present',ausente_1:attendance1.value==='absent',presente_2:attendance2.value==='present',ausente_2:attendance2.value==='absent'};
   saveResultBtn.disabled=true; saveResultBtn.textContent='Salvando...';
-  try{const r=await apiFetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro ao salvar'); saveStatus.className='status ok'; saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`; saveStatus.style.display='block'; lastSavedResultId=d.id; document.querySelector('#exportSavedPdf').style.display='block'; await showReport();}
+  try{const r=await apiFetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro ao salvar'); await refreshData({students:true,report:true}); saveStatus.className='status ok'; saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`; saveStatus.style.display='block'; lastSavedResultId=d.id; document.querySelector('#exportSavedPdf').style.display='block'; await showReport();}
   catch(e){saveStatus.className='status error';saveStatus.textContent=e.message;saveStatus.style.display='block';}
   finally{saveResultBtn.textContent='💾 Salvar resultado do aluno';saveResultBtn.disabled=false;}
 });
@@ -318,7 +345,7 @@ async function showReport(){
   const rows=d.resultados||[]; renderDiagnostic(d.diagnostico);
   reportBody.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.numero_chamada||'—'}</td><td>${x.aluno}</td><td>${x.matricula}</td><td>${x.status||'ATIVO'}</td><td>${x.presente_1?'X':x.ausente_1?'AUSENTE':'—'}</td><td>${x.presente_2?'X':x.ausente_2?'AUSENTE':'—'}</td><td>${x.prova}</td><td>${x.id?`${x.acertos}/${x.questoes}`:'—'}</td><td>${x.id?x.erros:'—'}</td><td>${x.id?x.anuladas:'—'}</td><td>${x.id?x.em_branco:'—'}</td><td>${x.nota==null?'—':Number(x.nota).toFixed(2)}</td><td>${x.id?`<button class="reportPdf btn secondary" data-id="${x.id}" style="width:auto;padding:7px 9px;margin:2px">PDF</button><button class="reportDelete btn secondary" data-id="${x.id}" data-name="${x.aluno}" style="width:auto;padding:7px 9px;margin:2px">Excluir</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="13">Nenhum aluno encontrado para esta turma.</td></tr>';
   reportBody.querySelectorAll('.reportPdf').forEach(b=>b.addEventListener('click',()=>window.open(`/api/resultados/${b.dataset.id}/pdf`,'_blank')));
-  reportBody.querySelectorAll('.reportDelete').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Excluir o resultado de ${b.dataset.name}? Esta ação não pode ser desfeita.`))return;const rr=await apiFetch(`/api/resultados/${b.dataset.id}`,{method:'DELETE'});const dd=await rr.json();if(!rr.ok){alert(dd.detail||'Erro ao excluir');return;}await showReport();}));
+  reportBody.querySelectorAll('.reportDelete').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Excluir o resultado de ${b.dataset.name}? Esta ação não pode ser desfeita.`))return;const rr=await apiFetch(`/api/resultados/${b.dataset.id}`,{method:'DELETE'});const dd=await rr.json();if(!rr.ok){alert(dd.detail||'Erro ao excluir');return;}await refreshData({students:false,report:true});}));
 }
 classSelect.addEventListener('change',async()=>{await loadStudents();reportBody.innerHTML='';reportSummary.innerHTML='';diagnosticText.textContent='Carregando provas...';await loadReportExams();await showReport();});
 reportExam.addEventListener('change',showReport);
@@ -333,12 +360,15 @@ async function loadUsers(){
   const ur=await apiFetch('/api/admin/usuarios');const users=await ur.json();
   const names=Object.fromEntries(turmas.map(t=>[t.id,t.nome]));
   document.querySelector('#usersBody').innerHTML=users.map(u=>`<tr><td>${u.nome}</td><td>${u.login}</td><td>${u.tipo}</td><td>${u.tipo==='admin'?'Todas':u.turma_ids.map(id=>names[id]||id).join(', ')||'Nenhuma'}</td><td>${u.ativo?'Ativo':'Inativo'}</td><td>${u.id===currentUser.id?'Em uso':u.tipo!=='professor'?'Protegido':`<button class="deleteUser btn secondary" data-id="${u.id}" data-name="${u.nome}" style="width:auto;padding:7px 9px;margin:0">Excluir</button>`}</td></tr>`).join('');
-  document.querySelectorAll('.deleteUser').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Excluir o cadastro de ${b.dataset.name}? Esta ação não pode ser desfeita.`))return;const r=await apiFetch(`/api/admin/usuarios/${b.dataset.id}`,{method:'DELETE'});const d=await r.json();if(!r.ok){alert(d.detail||'Erro ao excluir usuário');return;}await loadUsers();}));
+  document.querySelectorAll('.deleteUser').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Excluir o cadastro de ${b.dataset.name}? Esta ação não pode ser desfeita.`))return;const r=await apiFetch(`/api/admin/usuarios/${b.dataset.id}`,{method:'DELETE'});const d=await r.json();if(!r.ok){alert(d.detail||'Erro ao excluir usuário');return;}await refreshData({students:false,report:true});}));
 }
 document.querySelector('#createUser').addEventListener('click',async()=>{
   const body={nome:document.querySelector('#userName').value.trim(),login:document.querySelector('#userLogin').value.trim(),senha:document.querySelector('#userPass').value,tipo:document.querySelector('#userType').value,turma_ids:[...document.querySelectorAll('.userClass:checked')].map(x=>Number(x.value))};
-  const st=document.querySelector('#userStatus');try{if(!body.nome||!body.login||!body.senha)throw new Error('Preencha nome, login e senha.');const r=await apiFetch('/api/admin/usuarios',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro ao criar usuário');st.className='status ok';st.textContent='Usuário criado com sucesso.';st.style.display='block';document.querySelector('#userName').value='';document.querySelector('#userLogin').value='';document.querySelector('#userPass').value='';document.querySelectorAll('.userClass').forEach(x=>x.checked=false);await loadUsers();}catch(e){st.className='status error';st.textContent=e.message;st.style.display='block';}
+  const st=document.querySelector('#userStatus');try{if(!body.nome||!body.login||!body.senha)throw new Error('Preencha nome, login e senha.');const r=await apiFetch('/api/admin/usuarios',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro ao criar usuário');st.className='status ok';st.textContent='Usuário criado com sucesso.';st.style.display='block';document.querySelector('#userName').value='';document.querySelector('#userLogin').value='';document.querySelector('#userPass').value='';document.querySelectorAll('.userClass').forEach(x=>x.checked=false);await refreshData({students:false,report:true});}catch(e){st.className='status error';st.textContent=e.message;st.style.display='block';}
 });
+document.addEventListener('visibilitychange',()=>{if(!document.hidden && currentUser) refreshData({students:true,report:true}).catch(()=>{});});
+window.addEventListener('focus',()=>{if(currentUser) refreshData({students:true,report:true}).catch(()=>{});});
+setInterval(()=>{if(currentUser && !document.hidden) refreshData({students:true,report:true}).catch(()=>{});},60000);
 startApp();
 
 </script>
