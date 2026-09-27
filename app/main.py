@@ -91,6 +91,20 @@ async def scan(file: UploadFile = File(...), user: Usuario = Depends(current_use
 def listar_turmas(db: Session = Depends(get_db), user: Usuario = Depends(current_user)):
     turmas = db.query(Turma).order_by(Turma.nome).all() if user.tipo == 'admin' else sorted(user.turmas, key=lambda t:t.nome)
     return [{'id': t.id, 'nome': t.nome, 'total_alunos': len(t.alunos)} for t in turmas]
+@app.delete('/api/admin/turmas/{turma_id}')
+def delete_turma(turma_id: int, db: Session = Depends(get_db), admin: Usuario = Depends(admin_user)):
+    turma = db.get(Turma, turma_id)
+    if not turma:
+        raise HTTPException(404, 'Turma não encontrada.')
+    nome = turma.nome
+    total_alunos = len(turma.alunos)
+    # A relação Turma.alunos usa delete-orphan; ao excluir a turma,
+    # os alunos e seus resultados associados também são removidos.
+    # A relação usuário-turma é removida pelo relacionamento many-to-many.
+    db.delete(turma)
+    db.commit()
+    return {'ok': True, 'nome': nome, 'alunos_excluidos': total_alunos}
+
 @app.get('/api/turmas/{turma_id}/alunos')
 def listar_alunos(turma_id: int, db: Session = Depends(get_db), user: Usuario = Depends(current_user)):
     turma = db.get(Turma, turma_id)
