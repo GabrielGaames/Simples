@@ -19,8 +19,11 @@ class Turma(Base):
 class Aluno(Base):
     __tablename__ = 'alunos'
     id = Column(Integer, primary_key=True)
+    # ID da chamada/lista escolar. É diferente do ID interno do banco.
+    numero_chamada = Column(String(30), nullable=True, index=True)
     nome = Column(String(180), nullable=False, index=True)
     matricula = Column(String(80), unique=True, nullable=False, index=True)
+    status = Column(String(30), nullable=False, default='ATIVO', index=True)
     turma_id = Column(Integer, ForeignKey('turmas.id'), nullable=False, index=True)
     turma = relationship('Turma', back_populates='alunos')
     resultados = relationship('Resultado', back_populates='aluno', cascade='all, delete-orphan')
@@ -38,6 +41,10 @@ class Resultado(Base):
     anuladas = Column(Integer, nullable=False, default=0)
     em_branco = Column(Integer, nullable=False, default=0)
     nota = Column(Float, nullable=False)
+    presente_1 = Column(Boolean, nullable=False, default=False)
+    ausente_1 = Column(Boolean, nullable=False, default=False)
+    presente_2 = Column(Boolean, nullable=False, default=False)
+    ausente_2 = Column(Boolean, nullable=False, default=False)
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
     aluno = relationship('Aluno', back_populates='resultados')
 

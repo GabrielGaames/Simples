@@ -8,9 +8,10 @@ from fastapi.staticfiles import StaticFiles
 from openpyxl import load_workbook
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect, text
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, A3
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
@@ -21,6 +22,31 @@ from .auth import admin_user, can_access_turma, clear_login_cookie, current_user
 
 BASE_DIR = Path(__file__).resolve().parent
 Base.metadata.create_all(bind=engine)
+
+def ensure_schema_updates():
+    """Add columns introduced by the reporting/import format to existing databases."""
+    insp = inspect(engine)
+    def add_missing(table, columns):
+        existing = {c['name'] for c in insp.get_columns(table)}
+        with engine.begin() as conn:
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+    add_missing('alunos', {
+        'numero_chamada': 'VARCHAR(30)',
+        'status': "VARCHAR(30) DEFAULT 'ATIVO'",
+    })
+    add_missing('resultados', {
+        'presente_1': 'BOOLEAN DEFAULT FALSE',
+        'ausente_1': 'BOOLEAN DEFAULT FALSE',
+        'presente_2': 'BOOLEAN DEFAULT FALSE',
+        'ausente_2': 'BOOLEAN DEFAULT FALSE',
+    })
+    # Backfill status for existing rows.
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alunos SET status = 'ATIVO' WHERE status IS NULL OR TRIM(status) = ''"))
+
+ensure_schema_updates()
 
 def bootstrap_admin():
     login = os.getenv('ADMIN_LOGIN', '').strip().lower()
@@ -71,33 +97,75 @@ def listar_alunos(turma_id: int, db: Session = Depends(get_db), user: Usuario = 
     if not turma: raise HTTPException(404, 'Turma não encontrada.')
     if not can_access_turma(user, turma_id): raise HTTPException(403, 'Você não tem acesso a esta turma.')
     alunos = db.query(Aluno).filter(Aluno.turma_id == turma_id).order_by(Aluno.nome).all()
-    return [{'id': a.id, 'nome': a.nome, 'matricula': a.matricula} for a in alunos]
+    return [{'id': a.id, 'numero_chamada': a.numero_chamada, 'nome': a.nome, 'matricula': a.matricula, 'status': a.status or 'ATIVO'} for a in alunos]
 
 @app.post('/api/alunos/importar')
 async def importar_alunos(file: UploadFile = File(...), db: Session = Depends(get_db), user: Usuario = Depends(admin_user)):
-    if not (file.filename or '').lower().endswith(('.xlsx', '.xlsm')): raise HTTPException(400, 'Envie uma planilha .xlsx.')
+    if not (file.filename or '').lower().endswith(('.xlsx', '.xlsm')):
+        raise HTTPException(400, 'Envie uma planilha .xlsx.')
     try:
-        wb=load_workbook(BytesIO(await file.read()),read_only=True,data_only=True); rows=list(wb.active.iter_rows(values_only=True))
-    except Exception: raise HTTPException(400, 'Não foi possível ler a planilha.')
-    if not rows: raise HTTPException(400, 'A planilha está vazia.')
-    def norm(v): return str(v or '').strip().lower().replace('í','i').replace('á','a').replace('ã','a').replace('ç','c')
-    headers=[norm(v) for v in rows[0]]; aliases={'nome':['nome','nome do aluno','aluno'],'turma':['turma','sala'],'matricula':['matricula','matrícula','registro','ra']}; indexes={}
-    for field,names in aliases.items():
-        for i,h in enumerate(headers):
-            if h in [norm(n) for n in names]: indexes[field]=i; break
-    if len(indexes)!=3: raise HTTPException(400,'A primeira linha precisa conter as colunas Nome do aluno, Turma e Matrícula.')
-    criados=atualizados=ignorados=0
+        wb = load_workbook(BytesIO(await file.read()), read_only=True, data_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+    except Exception:
+        raise HTTPException(400, 'Não foi possível ler a planilha.')
+    if not rows:
+        raise HTTPException(400, 'A planilha está vazia.')
+
+    def norm(v):
+        import unicodedata
+        value = str(v or '').strip().lower()
+        return ''.join(c for c in unicodedata.normalize('NFD', value) if unicodedata.category(c) != 'Mn')
+
+    headers = [norm(v) for v in rows[0]]
+    aliases = {
+        'numero_chamada': ['id', 'numero', 'numero chamada', 'nº', 'n'],
+        'nome': ['nome', 'nome do aluno', 'aluno'],
+        'turma': ['turma', 'sala'],
+        'matricula': ['matricula', 'registro', 'ra'],
+        'status': ['status', 'status escola', 'situacao', 'situação'],
+    }
+    indexes = {}
+    for field, names in aliases.items():
+        normalized = [norm(n) for n in names]
+        for i, h in enumerate(headers):
+            if h in normalized:
+                indexes[field] = i
+                break
+    required = {'nome', 'turma', 'matricula'}
+    if not required.issubset(indexes):
+        raise HTTPException(400, 'A planilha precisa conter as colunas Nome do aluno, Turma e Matrícula. A coluna ID é recomendada para o número da chamada.')
+
+    criados = atualizados = ignorados = 0
     for row in rows[1:]:
         def value(field):
-            i=indexes[field]; return str(row[i] if i<len(row) and row[i] is not None else '').strip()
-        nome,turma_nome,matricula=value('nome'),value('turma'),value('matricula')
-        if not nome or not turma_nome or not matricula: ignorados+=1; continue
-        turma=db.query(Turma).filter(Turma.nome==turma_nome).first()
-        if not turma: turma=Turma(nome=turma_nome); db.add(turma); db.flush()
-        aluno=db.query(Aluno).filter(Aluno.matricula==matricula).first()
-        if aluno: aluno.nome=nome; aluno.turma_id=turma.id; atualizados+=1
-        else: db.add(Aluno(nome=nome,matricula=matricula,turma_id=turma.id)); criados+=1
-    db.commit(); return {'criados':criados,'atualizados':atualizados,'ignorados':ignorados}
+            i = indexes.get(field)
+            if i is None or i >= len(row) or row[i] is None:
+                return ''
+            return str(row[i]).strip()
+
+        numero, nome, turma_nome, matricula, status = (value('numero_chamada'), value('nome'), value('turma'), value('matricula'), value('status'))
+        if not nome or not turma_nome or not matricula:
+            ignorados += 1
+            continue
+        status_norm = norm(status) if status else 'ativo'
+        status = 'ATIVO' if status_norm in ('ativo', 'cursando') else 'NÃO ATIVO'
+        turma = db.query(Turma).filter(Turma.nome == turma_nome).first()
+        if not turma:
+            turma = Turma(nome=turma_nome)
+            db.add(turma)
+            db.flush()
+        aluno = db.query(Aluno).filter(Aluno.matricula == matricula).first()
+        if aluno:
+            aluno.nome = nome
+            aluno.turma_id = turma.id
+            aluno.numero_chamada = numero or aluno.numero_chamada
+            aluno.status = status
+            atualizados += 1
+        else:
+            db.add(Aluno(nome=nome, matricula=matricula, numero_chamada=numero or None, status=status, turma_id=turma.id))
+            criados += 1
+    db.commit()
+    return {'criados': criados, 'atualizados': atualizados, 'ignorados': ignorados}
 
 @app.get('/api/admin/usuarios')
 def list_users(db: Session=Depends(get_db), _:Usuario=Depends(admin_user)):
@@ -129,32 +197,42 @@ def update_user(user_id:int,payload:UserUpdate,db:Session=Depends(get_db),admin:
 
 def _pdf_resultado(r: Resultado, turma: Turma) -> BytesIO:
     out = BytesIO()
-    doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=16*mm, leftMargin=16*mm, topMargin=14*mm, bottomMargin=14*mm)
+    doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=12*mm, leftMargin=12*mm, topMargin=12*mm, bottomMargin=12*mm)
     styles = getSampleStyleSheet()
     title = ParagraphStyle('SchoolTitle', parent=styles['Title'], alignment=TA_CENTER, fontSize=15, leading=18, spaceAfter=3)
     sub = ParagraphStyle('SchoolSub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=9, textColor=colors.HexColor('#555555'))
+    small = ParagraphStyle('Small', parent=styles['Normal'], fontSize=7.5, leading=10)
     story = []
     logo = BASE_DIR / 'static' / 'logo-escola.png'
     if logo.exists():
-        story += [RLImage(str(logo), width=35*mm, height=35*mm), Spacer(1, 2*mm)]
-    story += [Paragraph('Colégio Estadual em Período Integral João Barbosa Reis', title), Paragraph('CEPI-JBR - Relatório de Resultado', sub), Spacer(1, 7*mm)]
+        story += [RLImage(str(logo), width=28*mm, height=28*mm), Spacer(1, 1*mm)]
+    story += [Paragraph('Colégio Estadual em Período Integral João Barbosa Reis', title), Paragraph('ScoreView - Relatório individual da prova', sub), Spacer(1, 5*mm)]
     info = [
-        ['Aluno', r.aluno.nome], ['Matrícula', r.aluno.matricula], ['Turma', turma.nome],
-        ['Prova / bloco', r.prova_nome], ['Questões', str(r.quantidade_questoes)],
-        ['Acertos', str(r.acertos)], ['Erros', str(r.erros)], ['Anuladas', str(r.anuladas)],
-        ['Em branco', str(r.em_branco)], ['Nota', f'{r.nota:.2f}'.replace('.', ',')],
-        ['Data', r.criado_em.strftime('%d/%m/%Y %H:%M')],
+        ['ID / chamada', r.aluno.numero_chamada or '—'], ['Matrícula', r.aluno.matricula], ['Aluno', r.aluno.nome],
+        ['Turma', turma.nome], ['Status', r.aluno.status or 'ATIVO'], ['Prova / bloco', r.prova_nome],
+        ['1ª chamada', 'PRESENTE' if r.presente_1 else ('AUSENTE' if r.ausente_1 else 'NÃO INFORMADO')],
+        ['2ª chamada', 'PRESENTE' if r.presente_2 else ('AUSENTE' if r.ausente_2 else 'NÃO INFORMADO')],
+        ['Acertos', str(r.acertos)], ['Erros', str(r.erros)], ['Anuladas', str(r.anuladas)], ['Em branco', str(r.em_branco)],
+        ['Nota', f'{r.nota:.2f}'.replace('.', ',')], ['Data', r.criado_em.strftime('%d/%m/%Y %H:%M') if r.criado_em else '—'],
     ]
-    table = Table(info, colWidths=[42*mm, 120*mm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f1f3f5')), ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
-        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#d6d9dc')), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-        ('LEFTPADDING',(0,0),(-1,-1),7), ('RIGHTPADDING',(0,0),(-1,-1),7), ('TOPPADDING',(0,0),(-1,-1),7), ('BOTTOMPADDING',(0,0),(-1,-1),7),
-    ]))
-    story += [table, Spacer(1, 8*mm), Paragraph('Documento gerado pelo ScoreView. Relatório para conferência e uso administrativo.', sub)]
-    doc.build(story)
-    out.seek(0)
-    return out
+    table = Table(info, colWidths=[42*mm, 135*mm])
+    table.setStyle(TableStyle([('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f1f3f5')),('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#d6d9dc')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('PADDING',(0,0),(-1,-1),5)]))
+    story += [table, Spacer(1, 6*mm), Paragraph('Respostas da prova', ParagraphStyle('H', parent=styles['Heading2'], fontSize=12, leading=14, spaceAfter=4))]
+    respostas = (r.respostas or '').split(',')
+    gabarito = (r.gabarito or '').split(',')
+    qrows = [['Questão','Resposta','Gabarito','Resultado']]
+    for i in range(r.quantidade_questoes):
+        ans = respostas[i].strip().upper() if i < len(respostas) and respostas[i].strip() else '—'
+        key = gabarito[i].strip().upper() if i < len(gabarito) and gabarito[i].strip() else '—'
+        if ans == 'MULT': result = 'ANULADA'
+        elif ans == '—': result = 'EM BRANCO'
+        elif ans == key: result = 'CERTA'
+        else: result = 'ERRADA'
+        qrows.append([str(i+1), ans, key, result])
+    qt = Table(qrows, colWidths=[25*mm,35*mm,35*mm,55*mm], repeatRows=1)
+    qt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#263746')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#d6d9dc')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),8),('PADDING',(0,0),(-1,-1),3)]))
+    story += [qt, Spacer(1, 5*mm), Paragraph('Documento gerado pelo ScoreView. O ID/chamada é independente do identificador interno do banco e corresponde ao número do aluno na lista escolar.', small)]
+    doc.build(story); out.seek(0); return out
 
 @app.delete('/api/admin/usuarios/{user_id}')
 def delete_user(user_id:int, db:Session=Depends(get_db), admin:Usuario=Depends(admin_user)):
@@ -181,7 +259,16 @@ def resultado_pdf(resultado_id:int, db:Session=Depends(get_db), user:Usuario=Dep
     return StreamingResponse(pdf, media_type='application/pdf', headers={'Content-Disposition':f'attachment; filename="relatorio_{safe}.pdf"'})
 
 class ResultadoIn(BaseModel):
-    aluno_id:int; prova_nome:str='Prova'; quantidade_questoes:int; gabarito:list[str]; questions:list[dict[str,Any]]
+    aluno_id:int
+    prova_nome:str='Prova'
+    quantidade_questoes:int
+    gabarito:list[str]
+    questions:list[dict[str,Any]]
+    presente_1:bool=False
+    ausente_1:bool=False
+    presente_2:bool=False
+    ausente_2:bool=False
+
 @app.post('/api/resultados')
 def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario=Depends(current_user)):
     aluno=db.get(Aluno,payload.aluno_id)
@@ -189,6 +276,8 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
     if not can_access_turma(user,aluno.turma_id): raise HTTPException(403,'Você não tem acesso a este aluno.')
     count=payload.quantidade_questoes
     if count not in (20,30,45) or len(payload.gabarito)!=count: raise HTTPException(400,'Quantidade/gabarito inválido.')
+    if payload.presente_1 and payload.ausente_1: raise HTTPException(400,'A 1ª chamada não pode ser presente e ausente ao mesmo tempo.')
+    if payload.presente_2 and payload.ausente_2: raise HTTPException(400,'A 2ª chamada não pode ser presente e ausente ao mesmo tempo.')
     qs=sorted(payload.questions,key=lambda q:int(q.get('number',0)))[:count]
     if len(qs)<count: raise HTTPException(400,'Leitura incompleta do cartão.')
     correct=mult=blank=0;answers=[]
@@ -197,8 +286,9 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
         if status=='MULT':mult+=1
         elif status=='BLANK':blank+=1
         if status=='OK' and answer==payload.gabarito[i]:correct+=1
-    wrong=count-correct;nota=round(correct/count*10,2)
-    result=Resultado(aluno_id=aluno.id,prova_nome=payload.prova_nome.strip() or 'Prova',quantidade_questoes=count,gabarito=','.join(payload.gabarito),respostas=','.join(answers),acertos=correct,erros=wrong,anuladas=mult,em_branco=blank,nota=nota)
+    wrong=count-correct
+    nota=round(correct/count*10,2)
+    result=Resultado(aluno_id=aluno.id,prova_nome=payload.prova_nome.strip() or 'Prova',quantidade_questoes=count,gabarito=','.join(payload.gabarito),respostas=','.join(answers),acertos=correct,erros=wrong,anuladas=mult,em_branco=blank,nota=nota,presente_1=payload.presente_1,ausente_1=payload.ausente_1,presente_2=payload.presente_2,ausente_2=payload.ausente_2)
     db.add(result);db.commit();db.refresh(result);return {'id':result.id,'acertos':correct,'erros':wrong,'anuladas':mult,'em_branco':blank,'nota':nota}
 
 def _turma_resultados(db: Session, turma_id: int, prova_nome: str | None = None):
@@ -206,6 +296,16 @@ def _turma_resultados(db: Session, turma_id: int, prova_nome: str | None = None)
     if prova_nome:
         query = query.filter(Resultado.prova_nome == prova_nome)
     return query.order_by(Aluno.nome, Resultado.criado_em.desc()).all()
+
+def _turma_report_rows(db: Session, turma_id: int, prova_nome: str | None = None):
+    """Return one row per enrolled student, keeping the latest matching result when available."""
+    alunos = db.query(Aluno).filter(Aluno.turma_id == turma_id).order_by(Aluno.nome).all()
+    results = _turma_resultados(db, turma_id, prova_nome)
+    latest = {}
+    for r in results:
+        if r.aluno_id not in latest:
+            latest[r.aluno_id] = r
+    return [(a, latest.get(a.id)) for a in alunos]
 
 def _diagnostico_turma(resultados):
     if not resultados:
@@ -251,21 +351,34 @@ def _diagnostico_turma(resultados):
                "Para um diagnóstico por questão, selecione uma única prova no relatório.")
     return {'total_resultados':len(resultados),'alunos_com_resultado':alunos,'media_nota':round(media_nota,2),'aproveitamento':round(aproveitamento,1),'media_acertos':round(media_acertos,2),'media_erros':round(media_erros,2),'media_brancos':round(media_brancos,2),'media_anuladas':round(media_anuladas,2),'distribuicao':[{'faixa':k,'quantidade':v} for k,v in faixas.items()],'questoes':questoes,'texto':texto}
 
-def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None):
-    out=BytesIO(); doc=SimpleDocTemplate(out,pagesize=A4,rightMargin=12*mm,leftMargin=12*mm,topMargin=12*mm,bottomMargin=12*mm)
-    styles=getSampleStyleSheet(); title=ParagraphStyle('RTTitle',parent=styles['Title'],alignment=TA_CENTER,fontSize=16,leading=19,spaceAfter=3); sub=ParagraphStyle('RTSub',parent=styles['Normal'],alignment=TA_CENTER,fontSize=9,textColor=colors.HexColor('#555555')); h=ParagraphStyle('RTH',parent=styles['Heading2'],fontSize=12,leading=15,spaceBefore=7,spaceAfter=5); small=ParagraphStyle('RTSmall',parent=styles['Normal'],fontSize=8.5,leading=12)
-    story=[]; logo=BASE_DIR/'static'/'logo-escola.png'
-    if logo.exists(): story += [RLImage(str(logo),width=25*mm,height=25*mm),Spacer(1,1*mm)]
-    story += [Paragraph('Colégio Estadual em Período Integral João Barbosa Reis',title),Paragraph('CEPI-JBR - Relatório e diagnóstico de desempenho da turma',sub),Spacer(1,5*mm)]
-    info=[['Turma',turma.nome],['Prova',prova_nome or 'Todas as provas'],['Resultados',str(diagnostico['total_resultados'])],['Alunos com resultado',str(diagnostico['alunos_com_resultado'])],['Média da turma',f"{diagnostico['media_nota']:.2f}".replace('.',',')],['Aproveitamento médio',f"{diagnostico['aproveitamento']:.1f}%"]]
-    t=Table(info,colWidths=[45*mm,120*mm]); t.setStyle(TableStyle([('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f1f3f5')),('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#d6d9dc')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('PADDING',(0,0),(-1,-1),6)])); story += [t,Spacer(1,6*mm),Paragraph('Diagnóstico geral',h),Paragraph(diagnostico['texto'],small),Spacer(1,4*mm)]
-    dist=[['Faixa de aproveitamento','Resultados']]+[[x['faixa'],str(x['quantidade'])] for x in diagnostico['distribuicao']]
-    td=Table(dist,colWidths=[95*mm,40*mm]); td.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#d6d9dc')),('ALIGN',(1,1),(-1,-1),'CENTER'),('PADDING',(0,0),(-1,-1),5)])); story += [Paragraph('Distribuição dos resultados',h),td]
-    if diagnostico['questoes']:
-        story += [Paragraph('Desempenho por questão',h)]; qt=[['Questão','Respostas','Acertos','Aproveitamento','Brancos','Anuladas']]+[[str(x['questao']),str(x['respostas']),str(x['acertos']),f"{x['percentual']:.1f}%",str(x['brancos']),str(x['anuladas'])] for x in diagnostico['questoes']]; qtb=Table(qt,colWidths=[18*mm,24*mm,22*mm,32*mm,24*mm,24*mm],repeatRows=1); qtb.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#d6d9dc')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),7.5),('PADDING',(0,0),(-1,-1),4)])); story += [qtb]
-    story += [Spacer(1,7*mm),Paragraph('Resultados individuais',h)]; rows=[['Aluno','Matrícula','Prova','Acertos','Erros','Nota']]+[[r.aluno.nome,r.aluno.matricula,r.prova_nome,f'{r.acertos}/{r.quantidade_questoes}',str(r.erros),f'{r.nota:.2f}'.replace('.',',')] for r in resultados]
-    if len(rows)==1: rows.append(['Nenhum resultado','','','','',''])
-    rt=Table(rows,colWidths=[50*mm,28*mm,37*mm,24*mm,18*mm,18*mm],repeatRows=1); rt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#d6d9dc')),('FONTSIZE',(0,0),(-1,-1),7.5),('PADDING',(0,0),(-1,-1),4)])); story += [rt,Spacer(1,5*mm),Paragraph('Diagnóstico gerado automaticamente a partir dos resultados salvos. Use-o como apoio ao planejamento do feedback e das próximas atividades.',small)]
+def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None, db=None):
+    from reportlab.lib.pagesizes import landscape
+    out=BytesIO()
+    doc=SimpleDocTemplate(out,pagesize=landscape(A3),rightMargin=7*mm,leftMargin=7*mm,topMargin=9*mm,bottomMargin=9*mm)
+    styles=getSampleStyleSheet(); title=ParagraphStyle('RTTitle',parent=styles['Title'],alignment=TA_CENTER,fontSize=14,leading=16,spaceAfter=2); sub=ParagraphStyle('RTSub',parent=styles['Normal'],alignment=TA_CENTER,fontSize=8,textColor=colors.HexColor('#555555')); h=ParagraphStyle('RTH',parent=styles['Heading2'],fontSize=10,leading=12,spaceBefore=5,spaceAfter=4)
+    story=[Paragraph('Colégio Estadual em Período Integral João Barbosa Reis',title),Paragraph(f'ScoreView - Relatório da turma · {turma.nome} · {prova_nome or "Todas as provas"}',sub),Spacer(1,4*mm)]
+    if not prova_nome:
+        story += [Paragraph('Para exportação no formato de migração, selecione uma prova/bloco específica. Este relatório reúne os resultados salvos quando nenhuma prova é filtrada.', sub), Spacer(1,3*mm)]
+    info=[['Resultados',str(diagnostico['total_resultados']), 'Alunos com resultado',str(diagnostico['alunos_com_resultado']), 'Média',f"{diagnostico['media_nota']:.2f}".replace('.',','), 'Aproveitamento',f"{diagnostico['aproveitamento']:.1f}%"]]
+    it=Table(info,colWidths=[25*mm,22*mm,32*mm,22*mm,18*mm,20*mm,32*mm,25*mm]); it.setStyle(TableStyle([('BACKGROUND',(0,0),(0,0),colors.HexColor('#e9ecef')),('BACKGROUND',(2,0),(2,0),colors.HexColor('#e9ecef')),('BACKGROUND',(4,0),(4,0),colors.HexColor('#e9ecef')),('BACKGROUND',(6,0),(6,0),colors.HexColor('#e9ecef')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#d6d9dc')),('ALIGN',(1,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),7.5),('PADDING',(0,0),(-1,-1),4)])); story += [it,Spacer(1,4*mm)]
+    # Each result becomes one SIAP-oriented row.
+    headers=['ID','MATRÍCULA','NOME DO ALUNO','STATUS','PRES. 1ª','AUS. 1ª','PRES. 2ª','AUS. 2ª']+[f'Q{i}' for i in range(1,46)]+['NOTA']
+    rows=[headers]
+    for aluno, r in _turma_report_rows(db, turma.id, prova_nome):
+        if r is None:
+            rows.append([aluno.numero_chamada or '—',aluno.matricula,aluno.nome,aluno.status or 'ATIVO','','','','']+['—']*45+['—'])
+            continue
+        answers=(r.respostas or '').split(',')
+        qcells=[]
+        for i in range(45):
+            qcells.append(answers[i].strip().upper() if i < r.quantidade_questoes and i < len(answers) and answers[i].strip() else '—')
+        rows.append([aluno.numero_chamada or '—',aluno.matricula,aluno.nome,aluno.status or 'ATIVO','X' if r.presente_1 else '', 'X' if r.ausente_1 else '', 'X' if r.presente_2 else '', 'X' if r.ausente_2 else '']+qcells+[f'{r.nota:.2f}'.replace('.',',')])
+    if len(rows)==1:
+        rows.append(['—','—','Nenhum resultado','','','','','']+['—']*45+['—'])
+    widths=[10*mm,24*mm,42*mm,19*mm,12*mm,12*mm,12*mm,12*mm]+[5.1*mm]*45+[13*mm]
+    rt=Table(rows,colWidths=widths,repeatRows=1,splitByRow=1)
+    rt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#263746')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.25,colors.HexColor('#cfd4d8')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),4.7),('LEADING',(0,0),(-1,-1),5.2),('PADDING',(0,0),(-1,-1),2),('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
+    story += [Paragraph('Dados da prova',h),rt,Spacer(1,3*mm),Paragraph('Estrutura: ID/chamada · matrícula · nome · status escolar · presença/ausência nas duas chamadas · Q1–Q45 · nota. Questões acima da quantidade configurada ficam em branco.',sub)]
     doc.build(story); out.seek(0); return out
 
 @app.get('/api/turmas/{turma_id}/provas')
@@ -281,13 +394,19 @@ def relatorio(turma_id:int,prova_nome:str|None=None,db:Session=Depends(get_db),u
     if not turma: raise HTTPException(404,'Turma não encontrada.')
     if not can_access_turma(user,turma_id): raise HTTPException(403,'Você não tem acesso a esta turma.')
     resultados=_turma_resultados(db,turma_id,prova_nome); diagnostico=_diagnostico_turma(resultados)
-    return {'turma':turma.nome,'prova':prova_nome or 'Todas as provas','diagnostico':diagnostico,'resultados':[{'id':r.id,'aluno':r.aluno.nome,'matricula':r.aluno.matricula,'prova':r.prova_nome,'questoes':r.quantidade_questoes,'acertos':r.acertos,'erros':r.erros,'anuladas':r.anuladas,'em_branco':r.em_branco,'nota':r.nota,'data':r.criado_em.isoformat()} for r in resultados]}
+    rows=[]
+    for aluno,r in _turma_report_rows(db,turma_id,prova_nome):
+        if r is None:
+            rows.append({'id':None,'aluno':aluno.nome,'numero_chamada':aluno.numero_chamada,'matricula':aluno.matricula,'status':aluno.status or 'ATIVO','presente_1':False,'ausente_1':False,'presente_2':False,'ausente_2':False,'prova':prova_nome or '—','questoes':0,'respostas':[],'gabarito':[],'acertos':0,'erros':0,'anuladas':0,'em_branco':0,'nota':None,'data':None})
+        else:
+            rows.append({'id':r.id,'aluno':aluno.nome,'numero_chamada':aluno.numero_chamada,'matricula':aluno.matricula,'status':aluno.status or 'ATIVO','presente_1':r.presente_1,'ausente_1':r.ausente_1,'presente_2':r.presente_2,'ausente_2':r.ausente_2,'prova':r.prova_nome,'questoes':r.quantidade_questoes,'respostas':(r.respostas or '').split(','),'gabarito':(r.gabarito or '').split(','),'acertos':r.acertos,'erros':r.erros,'anuladas':r.anuladas,'em_branco':r.em_branco,'nota':r.nota,'data':r.criado_em.isoformat()})
+    return {'turma':turma.nome,'prova':prova_nome or 'Todas as provas','diagnostico':diagnostico,'resultados':rows}
 
 @app.get('/api/turmas/{turma_id}/relatorio/pdf')
 def relatorio_turma_pdf(turma_id:int,prova_nome:str|None=None,db:Session=Depends(get_db),user:Usuario=Depends(current_user)):
     turma=db.get(Turma,turma_id)
     if not turma: raise HTTPException(404,'Turma não encontrada.')
     if not can_access_turma(user,turma_id): raise HTTPException(403,'Você não tem acesso a esta turma.')
-    resultados=_turma_resultados(db,turma_id,prova_nome); diagnostico=_diagnostico_turma(resultados); pdf=_pdf_relatorio_turma(turma,resultados,diagnostico,prova_nome)
+    resultados=_turma_resultados(db,turma_id,prova_nome); diagnostico=_diagnostico_turma(resultados); pdf=_pdf_relatorio_turma(turma,resultados,diagnostico,prova_nome,db)
     safe=''.join(c if c.isalnum() or c in '-_' else '_' for c in f'{turma.nome}_{prova_nome or "todas"}')[:100]
     return StreamingResponse(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="relatorio_turma_{safe}.pdf"'})
