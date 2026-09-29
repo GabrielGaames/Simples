@@ -52,11 +52,12 @@
     </div>
     <div class="reportActions">
       <button id="prepareSiap" class="btn">☑ Preparar lançamento</button>
-      <button id="copySiap" class="btn secondary" disabled>📋 Copiar dados para o Plugin GPA</button>
+      <button id="copySiap" class="btn secondary" disabled>📋 Copiar para o Plugin GPA</button>
+      <button id="copySiapGrid" class="btn secondary" disabled>▦ Copiar grade (planilha)</button>
     </div>
     <div id="siapStatus" class="status"></div>
     <div class="guide">
-      <b>Fluxo:</b> o ScoreView prepara os dados na <b>ordem do número da chamada (ID)</b>, sem matrícula e sem status escolar. Clique em <b>Copiar dados para o Plugin GPA</b>. Depois, no SIAP, use o menu do <b>Plugin GPA → Colar (SIAP)</b>. O ScoreView não possui botão de colar no SIAP.
+      <b>Fluxo:</b> o ScoreView prepara a turma inteira, mantendo a mesma quantidade de alunos do SIAP. O botão <b>Copiar para o Plugin GPA</b> usa um formato compacto por <b>nome do aluno + questões acertadas</b>, sem matrícula, presença ou cabeçalho. Depois, no SIAP, use <b>Plugin GPA → Colar (SIAP)</b>. A opção <b>Copiar grade (planilha)</b> fica disponível apenas para conferência/diagnóstico.
     </div>
   </div>
 
@@ -70,7 +71,7 @@
       </table>
     </div>
     <div class="guide">
-      <b>Importante:</b> confira a quantidade de alunos e a ordem da chamada antes de copiar. O ScoreView bloqueia a cópia se houver aluno sem ID de chamada ou IDs duplicados. O fluxo é <b>ScoreView → Copiar dados → Plugin GPA → Colar (SIAP)</b>.
+      <b>Importante:</b> todos os alunos da turma são mantidos, inclusive os que estão sem resultado. Isso evita a diferença de quantidade de alunos que o SIAP informou. Para o Plugin GPA, a cópia usa o <b>nome exato do aluno</b> como chave e lista somente os números das questões acertadas. A matrícula não é enviada.
     </div>
   </div>
 </section>
@@ -129,7 +130,7 @@ const resultCard=document.querySelector('#resultCard'), questionsBox=document.qu
 let file=null, lastResult=null, reviewConfirmed=false, reviewSelections={};
 const classSelect=document.querySelector('#classSelect'), studentSelect=document.querySelector('#studentSelect'), examName=document.querySelector('#examName'), saveResultBtn=document.querySelector('#saveResult'), saveStatus=document.querySelector('#saveStatus'), attendance1=document.querySelector('#attendance1'), attendance2=document.querySelector('#attendance2');
 const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary'), reportExam=document.querySelector('#reportExam'), diagnosticText=document.querySelector('#diagnosticText'), diagnosticQuestions=document.querySelector('#diagnosticQuestions'), exportClassPdf=document.querySelector('#exportClassPdf');
-const siapClass=document.querySelector('#siapClass'), siapExam=document.querySelector('#siapExam'), siapDiscipline=document.querySelector('#siapDiscipline'), siapBimestre=document.querySelector('#siapBimestre'), prepareSiap=document.querySelector('#prepareSiap'), copySiap=document.querySelector('#copySiap'), siapStatus=document.querySelector('#siapStatus'), siapResultCard=document.querySelector('#siapResultCard'), siapSummary=document.querySelector('#siapSummary'), siapHead=document.querySelector('#siapHead'), siapBody=document.querySelector('#siapBody');
+const siapClass=document.querySelector('#siapClass'), siapExam=document.querySelector('#siapExam'), siapDiscipline=document.querySelector('#siapDiscipline'), siapBimestre=document.querySelector('#siapBimestre'), prepareSiap=document.querySelector('#prepareSiap'), copySiap=document.querySelector('#copySiap'), copySiapGrid=document.querySelector('#copySiapGrid'), siapStatus=document.querySelector('#siapStatus'), siapResultCard=document.querySelector('#siapResultCard'), siapSummary=document.querySelector('#siapSummary'), siapHead=document.querySelector('#siapHead'), siapBody=document.querySelector('#siapBody');
 let lastSiapData=null;
 
 const KEY_STORAGE_PREFIX='eduscanner_gabarito_';
@@ -444,29 +445,78 @@ function siapEscape(value){
   return String(value??'').replace(/"/g,'""');
 }
 
-function buildSiapClipboard(data,{includeHeader=false}={}){
+function normalizePluginName(value){
+  return String(value??'').replace(/\s+/g,' ').trim();
+}
+
+function buildSiapPluginClipboard(data){
+  // Formato principal para o Plugin GPA: uma linha por aluno, usando o nome
+  // como chave e apenas os números das questões acertadas. Todos os alunos
+  // da turma são mantidos, inclusive os que não possuem resultado.
+  // Exemplo: NOME DO ALUNO<TAB>1,3,7,10
+  const rows=[];
+  for(const x of data.resultados||[]){
+    const name=normalizePluginName(x.nome);
+    const hits=[...(new Set((x.acertos_questoes||[]).map(Number)))].filter(Number.isInteger).sort((a,b)=>a-b);
+    rows.push(`${name}\t${hits.join(',')}`);
+  }
+  return rows.join('\n');
+}
+
+function buildSiapGridClipboard(data,{includeHeader=false}={}){
   const qCount=Number(data.quantidade_questoes||0);
-  const headers=['ALUNO','1ª Pres.','1ª Aus.','2ª Pres.','2ª Aus.'];
+  const headers=['Aluno','1ª Pres.','1ª Aus.','2ª Pres.','2ª Aus.'];
   for(let i=1;i<=qCount;i++) headers.push(String(i));
   headers.push('Qtde Acertos','% Acertos');
   const rows=[];
   if(includeHeader) rows.push(headers);
   for(const x of data.resultados||[]){
     const id=String(x.numero_chamada??'').trim();
-    const aluno=id?`${id} - ${x.nome}`:x.nome;
-    const cells=[
-      aluno,
-      x.presente_1?'1':'',
-      x.ausente_1?'1':'',
-      x.presente_2?'1':'',
-      x.ausente_2?'1':''
-    ];
+    const aluno=id?`${id} - ${normalizePluginName(x.nome)}`:normalizePluginName(x.nome);
+    const cells=[aluno,x.presente_1?'1':'',x.ausente_1?'1':'',x.presente_2?'1':'',x.ausente_2?'1':''];
     const hits=new Set(x.acertos_questoes||[]);
     for(let i=1;i<=qCount;i++) cells.push(hits.has(i)?'1':'');
     cells.push(x.tem_resultado?String(x.acertos):'',x.tem_resultado&&x.percentual!=null?String(x.percentual).replace('.',','):'');
     rows.push(cells);
   }
   return rows.map(row=>row.map(v=>String(v??'').replace(/[\t\r\n]/g,' ')).join('\t')).join('\n');
+}
+
+async function copyTextToClipboard(text, htmlText=null, extraMimeText=null){
+  // Mantém text/plain como formato principal para o Plugin GPA. Quando o
+  // navegador permite ClipboardItem, também publicamos TSV/HTML para que a
+  // mesma cópia possa ser colada em uma planilha para conferência.
+  if(navigator.clipboard?.write && window.ClipboardItem){
+    const items={ 'text/plain': new Blob([text],{type:'text/plain'}) };
+    if(extraMimeText) items['text/tab-separated-values']=new Blob([extraMimeText],{type:'text/tab-separated-values'});
+    if(htmlText) items['text/html']=new Blob([htmlText],{type:'text/html'});
+    await navigator.clipboard.write([new ClipboardItem(items)]);
+    return;
+  }
+  if(navigator.clipboard?.writeText){ await navigator.clipboard.writeText(text); return; }
+  const ta=document.createElement('textarea');
+  ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  const ok=document.execCommand('copy');ta.remove();
+  if(!ok) throw new Error('O navegador bloqueou a cópia automática.');
+}
+
+function buildSiapGridHtml(data){
+  const qCount=Number(data.quantidade_questoes||0);
+  const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  let html='<table><thead><tr><th>Aluno</th><th>1ª Pres.</th><th>1ª Aus.</th><th>2ª Pres.</th><th>2ª Aus.</th>';
+  for(let i=1;i<=qCount;i++) html+=`<th>${i}</th>`;
+  html+='<th>Qtde Acertos</th><th>% Acertos</th></tr></thead><tbody>';
+  for(const x of data.resultados||[]){
+    const id=String(x.numero_chamada??'').trim();
+    const aluno=id?`${id} - ${normalizePluginName(x.nome)}`:normalizePluginName(x.nome);
+    const hits=new Set(x.acertos_questoes||[]);
+    html+=`<tr><td>${esc(aluno)}</td><td>${x.presente_1?'1':''}</td><td>${x.ausente_1?'1':''}</td><td>${x.presente_2?'1':''}</td><td>${x.ausente_2?'1':''}`;
+    for(let i=1;i<=qCount;i++) html+=`<td>${hits.has(i)?'1':''}</td>`;
+    html+=`<td>${x.tem_resultado?esc(x.acertos):''}</td><td>${x.tem_resultado&&x.percentual!=null?esc(String(x.percentual).replace('.',',')):' '}</td></tr>`;
+  }
+  html+='</tbody></table>';
+  return html;
 }
 
 function renderSiap(data){
@@ -477,7 +527,7 @@ function renderSiap(data){
     siapHead.innerHTML='';
     siapBody.innerHTML='<tr><td>Nenhum resultado salvo para esta prova.</td></tr>';
     siapResultCard.style.display='block';
-    copySiap.disabled=true;
+    copySiap.disabled=true; copySiapGrid.disabled=true;
     return;
   }
   const qHeaders=Array.from({length:qCount},(_,i)=>`<th>${i+1}</th>`).join('');
@@ -511,7 +561,7 @@ function renderSiap(data){
     'Ordem: ID / chamada'
   ].map(t=>`<span class="pill">${t}</span>`).join('');
   siapResultCard.style.display='block';
-  copySiap.disabled=!validation.ok;
+  copySiap.disabled=!validation.ok; copySiapGrid.disabled=!validation.ok;
 }
 
 async function prepareSiapData(){
@@ -524,7 +574,7 @@ async function prepareSiapData(){
     renderSiap(d);
     if(d.validacao?.ok!==false){
       siapStatus.className='status ok';
-      siapStatus.textContent=`Dados preparados para ${d.turma.nome} · ${d.prova}. Ordem da chamada conferida. A cópia será feita sem cabeçalho e sem matrícula/status.`;
+      siapStatus.textContent=`Dados preparados para ${d.turma.nome} · ${d.prova}. ${d.resumo?.alunos||0} alunos serão mantidos na cópia, inclusive os sem resultado. O formato principal usa nome + questões acertadas.`;
       siapStatus.style.display='block';
     }
   }catch(e){
@@ -533,25 +583,42 @@ async function prepareSiapData(){
 }
 
 prepareSiap.addEventListener('click',prepareSiapData);
-siapClass.addEventListener('change',async()=>{await loadSiapExams();siapResultCard.style.display='none';lastSiapData=null;copySiap.disabled=true;});
-siapExam.addEventListener('change',()=>{siapResultCard.style.display='none';lastSiapData=null;copySiap.disabled=true;});
+siapClass.addEventListener('change',async()=>{await loadSiapExams();siapResultCard.style.display='none';lastSiapData=null;copySiap.disabled=true;copySiapGrid.disabled=true;});
+siapExam.addEventListener('change',()=>{siapResultCard.style.display='none';lastSiapData=null;copySiap.disabled=true;copySiapGrid.disabled=true;});
 
 copySiap.addEventListener('click',async()=>{
   if(!lastSiapData || lastSiapData.validacao?.ok===false)return;
-  const text=buildSiapClipboard(lastSiapData,{includeHeader:false});
   try{
-    await navigator.clipboard.writeText(text);
+    const pluginText=buildSiapPluginClipboard(lastSiapData);
+    const gridText=buildSiapGridClipboard(lastSiapData,{includeHeader:false});
+    const html=buildSiapGridHtml(lastSiapData);
+    await copyTextToClipboard(pluginText,html,gridText);
     siapStatus.className='status ok';
-    siapStatus.textContent='✓ Dados copiados. Agora abra o SIAP e use o Plugin GPA → Colar (SIAP). O ScoreView não altera o SIAP diretamente.';
+    siapStatus.textContent=`✓ ${lastSiapData.resultados?.length||0} alunos copiados para o Plugin GPA. A lista inclui também alunos sem resultado. Agora, no SIAP, use Plugin GPA → Colar (SIAP).`;
     siapStatus.style.display='block';
   }catch(e){
-    const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
-    const ok=document.execCommand('copy');ta.remove();
-    siapStatus.className=ok?'status ok':'status error';
-    siapStatus.textContent=ok?'✓ Dados copiados. Agora use o Plugin GPA → Colar (SIAP) no SIAP.':'O navegador bloqueou a cópia automática. Use um computador/navegador que permita acesso à área de transferência.';
+    siapStatus.className='status error';
+    siapStatus.textContent=`Não foi possível copiar os dados: ${e.message||'erro do navegador'}`;
     siapStatus.style.display='block';
   }
 });
+
+copySiapGrid.addEventListener('click',async()=>{
+  if(!lastSiapData || lastSiapData.validacao?.ok===false)return;
+  try{
+    const gridText=buildSiapGridClipboard(lastSiapData,{includeHeader:true});
+    const html=buildSiapGridHtml(lastSiapData);
+    await copyTextToClipboard(gridText,html,gridText);
+    siapStatus.className='status ok';
+    siapStatus.textContent=`✓ Grade completa com ${lastSiapData.resultados?.length||0} alunos copiada. Esta opção é para colar em planilha/conferência; para o Plugin GPA, use o botão principal.`;
+    siapStatus.style.display='block';
+  }catch(e){
+    siapStatus.className='status error';
+    siapStatus.textContent=`Não foi possível copiar a grade: ${e.message||'erro do navegador'}`;
+    siapStatus.style.display='block';
+  }
+});
+
 
 
 async function loadUsers(){

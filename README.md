@@ -80,3 +80,10 @@ The result includes a confidence value per detected answer and a list of low-con
 - Exportação do mesmo conjunto de dados em TSV para conferência/uso externo.
 - O módulo não altera a lógica do scanner.
 - A automação direta dentro do SIAP/PLUGIN GPA não é assumida nesta versão; ela depende da interface da extensão e do navegador. A integração automática será tratada em uma etapa própria, após validar o formato de comunicação.
+
+## Versão 10.3 — SIAP/GPA
+- Preparação do lançamento usa todos os alunos da turma, inclusive sem resultado.
+- Cópia principal para o Plugin GPA: nome do aluno + números das questões acertadas.
+- Matrícula, presença, percentual e cabeçalho não entram no payload principal.
+- Cópia secundária em grade TSV/HTML para conferência em planilha.
+- Colagem no SIAP continua sendo feita pelo Plugin GPA.

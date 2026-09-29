@@ -1,46 +1,39 @@
 # ScoreView — módulo SIAP / GPA
 
-## Fluxo desta versão
+## Fluxo
 
-O ScoreView prepara os dados e o professor faz a etapa final manualmente no navegador:
-
-**ScoreView → Copiar para GPA → Plugin GPA → SIAP**
+**ScoreView → Copiar para o Plugin GPA → Plugin GPA → Colar (SIAP)**
 
 O ScoreView não acessa nem altera diretamente o SIAP.
 
-## Formato da cópia para o GPA
+## Lista de alunos
 
-A cópia para a área de transferência contém **somente as linhas dos alunos, sem cabeçalho**, na ordem do número da chamada/ID:
+A preparação sempre usa **todos os alunos cadastrados na turma**, não apenas os alunos com resultado salvo. Isso preserva a quantidade de alunos apresentada pelo SIAP e evita que alunos sem prova desapareçam da lista.
 
-```text
-ALUNO | 1ª Pres. | 1ª Aus. | 2ª Pres. | 2ª Aus. | 1 | ... | N | Qtde Acertos | % Acertos
-```
+## Cópia principal para o Plugin GPA
 
-O primeiro campo segue o padrão visual da lista do SIAP:
+O botão **Copiar para o Plugin GPA** publica como `text/plain` uma linha por aluno:
 
 ```text
-1 - NOME DO ALUNO
-2 - OUTRO ALUNO
-3 - OUTRO ALUNO
+NOME DO ALUNO<TAB>1,3,7,10
+OUTRO ALUNO<TAB>2,4,5
+ALUNO SEM RESULTADO<TAB>
 ```
 
-Não são enviados para a cópia:
+- primeira coluna: nome do aluno;
+- segunda coluna: números das questões acertadas, separados por vírgula;
+- aluno sem resultado: mantém a linha, mas sem questões;
+- matrícula não é enviada;
+- presença não é enviada;
+- percentual não é enviado;
+- cabeçalho não é enviado.
 
-- matrícula;
-- status escolar;
-- ID interno do banco;
-- cabeçalho da tabela.
+Quando o navegador suporta `ClipboardItem`, a mesma ação também publica uma grade TSV/HTML em formatos auxiliares, sem alterar o `text/plain` principal.
 
-Para cada questão, `1` significa que o aluno acertou; célula vazia significa que a questão não deve ser marcada como acerto.
+## Grade de conferência
 
-## Compatibilidade e validação
+O botão **Copiar grade (planilha)** copia a tabela completa com aluno, presença, questões e totais. Serve para conferência/diagnóstico e não é o formato principal do Plugin GPA.
 
-- A ordenação é numérica pelo ID da chamada: `1, 2, 3 ... 10, 11 ...`.
-- IDs ausentes bloqueiam a cópia.
-- IDs duplicados bloqueiam a cópia.
-- O ID `1.0` recebido de uma célula numérica do Excel é normalizado para `1`.
-- A tela mantém a conferência visual antes da cópia.
+## Fonte externa consultada
 
-## Observação sobre quantidade de alunos
-
-O SIAP/Plugin GPA precisa trabalhar com a mesma lista de alunos. Por isso o ScoreView mantém uma linha para cada aluno cadastrado na turma, mesmo quando ele ainda não possui resultado da prova. A quantidade de linhas é mostrada na tela para conferência antes da cópia.
+A documentação pública do PLUGIN GPA informa que a versão nova passou a organizar a cópia por nome do aluno e oferece ações separadas de copiar e colar. A política do plugin também descreve a coleta de marcações de checkboxes/textos e o uso de armazenamento local temporário.
