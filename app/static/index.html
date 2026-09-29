@@ -78,7 +78,7 @@
 
 <!-- DOM compatível com o PLUGIN GPA. O plugin coleta tr.linhaAluno + data-number + checkboxes. -->
 <div id="pluginGpaCompat" aria-hidden="true" style="position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;">
-  <table id="pluginGpaCompatTable"><tbody id="pluginGpaCompatBody"></tbody></table>
+  <table id="pluginGpaCompatTable"><tbody id="pluginGpaCompatBody"></tbody></table><script id="scoreview-gpa-data" type="application/json"></script>
 </div>
 
 <section class="view" data-view-panel="students"><div class="page-head"><div><h1>Alunos e turmas</h1><p class="muted">Importe a planilha institucional para atualizar os cadastros.</p></div></div><div id="adminImportCard" class="card"><h2>Importar alunos</h2><p class="muted">Arquivo .xlsx com as colunas <b>ID (número da chamada)</b>, Nome do aluno, Turma e Matrícula. A coluna Status é opcional e aceita ATIVO ou NÃO ATIVO.</p><div class="field"><label class="btn secondary" for="studentsFile">📄 Selecionar planilha</label><input id="studentsFile" type="file" accept=".xlsx,.xlsm"><button id="importStudents" class="btn" disabled>Importar planilha</button><div id="importStatus" class="status"></div></div></div><div id="classesAdminCard" class="card"><h2>Turmas cadastradas</h2><p class="muted">Exclua uma turma somente quando tiver certeza. A exclusão remove os alunos, resultados de provas e vínculos de professores daquela turma.</p><div class="tableWrap"><table><thead><tr><th>Turma</th><th>Alunos</th><th>Ações</th></tr></thead><tbody id="classesAdminBody"><tr><td colspan="3">Carregando...</td></tr></tbody></table></div><div id="classDeleteStatus" class="status"></div></div></section>
@@ -528,12 +528,28 @@ function renderPluginGpaCompat(data){
   if(!pluginGpaCompatBody)return;
   const qCount=Number(data.quantidade_questoes||0);
   const rows=data.resultados||[];
+  // Fonte estruturada para a extensão. Assim ela não depende apenas do
+  // estado visual dos checkboxes ocultos.
+  const payload={version:2,qCount,rows:rows.map(x=>({
+    numero:String(x.numero_chamada??'').trim(),
+    nome:String(x.nome||''),
+    // A frequência registrada no ScoreView é a fonte de verdade para o SIAP.
+    // Os quatro campos precisam viajar no payload porque o SIAP inicia os alunos como ausentes.
+    presente_1:Boolean(x.presente_1),
+    ausente_1:Boolean(x.ausente_1),
+    presente_2:Boolean(x.presente_2),
+    ausente_2:Boolean(x.ausente_2),
+    tem_resultado:Boolean(x.tem_resultado),
+    acertos_questoes:[...(x.acertos_questoes||[])].map(Number).filter(Number.isInteger)
+  }))};
+  const dataNode=document.getElementById('scoreview-gpa-data');
+  if(dataNode) dataNode.textContent=JSON.stringify(payload);
   pluginGpaCompatBody.innerHTML=rows.map(x=>{
     const id=String(x.numero_chamada??'').trim();
     const hits=new Set(x.acertos_questoes||[]);
-    // O PLUGIN GPA original coleta todos os checkboxes em ordem:
-    // 0=1ª presença, 1=1ª ausência, 2=2ª presença, 3=2ª ausência,
-    // 4..=questões. Mantemos exatamente essa ordem.
+    // Compatibilidade visual com o plugin original. Os quatro primeiros
+    // checkboxes continuam existindo, mas a extensão nova usa o payload
+    // estruturado acima para não perder os acertos.
     const checks=[!!x.presente_1,!!x.ausente_1,!!x.presente_2,!!x.ausente_2];
     for(let i=1;i<=qCount;i++) checks.push(x.tem_resultado && hits.has(i));
     const checkHtml=checks.map((v,i)=>`<input type="checkbox" ${v?'checked':''} aria-label="${i<4?'chamada':'questao '+(i-3)}">`).join('');

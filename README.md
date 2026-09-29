@@ -1,4 +1,4 @@
-# EDUSCANNER
+# ScoreView 10.6
 
 Versão atual do EduScanner com scanner de 45 questões, turmas, alunos, resultados e relatórios.
 
@@ -79,7 +79,13 @@ The result includes a confidence value per detected answer and a list of low-con
 - Botão para copiar a tabela em formato tabular (TSV) para a área de transferência.
 - Exportação do mesmo conjunto de dados em TSV para conferência/uso externo.
 - O módulo não altera a lógica do scanner.
-- A automação direta dentro do SIAP/PLUGIN GPA não é assumida nesta versão; ela depende da interface da extensão e do navegador. A integração automática será tratada em uma etapa própria, após validar o formato de comunicação.
+- A integração com o PLUGIN GPA usa o payload estruturado do ScoreView e a extensão compatível. A frequência de 1ª/2ª chamada é transferida do ScoreView para o SIAP, que inicia os alunos como ausentes.
+- O plugin marca somente as questões corretas e mantém alunos sem resultado sem questões marcadas.
+
+## Versão 10.6 — SIAP/GPA
+- Frequência do ScoreView passa a ser enviada no payload estruturado para o plugin.
+- O SIAP inicia todos como ausentes; a extensão primeiro ajusta Pres./Aus. das duas chamadas conforme o ScoreView e só depois lança as questões.
+- Alunos presentes sem resultado continuam com a presença marcada, mas sem questões.
 
 ## Versão 10.3 — SIAP/GPA
 - Preparação do lançamento usa todos os alunos da turma, inclusive sem resultado.

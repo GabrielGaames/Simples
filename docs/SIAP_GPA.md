@@ -7,10 +7,11 @@ A integração usa o formato real da extensão PLUGIN GPA 1.0 enviada para anál
 1. O ScoreView prepara a turma inteira.
 2. Uma tabela de compatibilidade é mantida no DOM com `tr.linhaAluno`.
 3. Cada linha possui `data-number` com o número da chamada.
-4. A ordem dos checkboxes é: 1ª presença, 1ª ausência, 2ª presença, 2ª ausência e depois Q1...Q45.
+4. A ordem dos checkboxes é: 1ª presença, 1ª ausência, 2ª presença, 2ª ausência e depois Q1...Q45. A frequência do ScoreView é a fonte de verdade para os quatro primeiros campos.
 5. O professor usa **PLUGIN GPA → Copiar (GPA)** na própria página do ScoreView.
 6. A extensão guarda os dados no armazenamento local dela.
-7. O professor abre o SIAP e usa **PLUGIN GPA → Colar (SIAP)**.
+7. No SIAP, o plugin primeiro ajusta 1ª/2ª chamada conforme o ScoreView; o SIAP inicia os alunos como ausentes.
+8. Depois o plugin marca somente as questões corretas e preserva alunos sem resultado sem marcar questões.
 
 ## Por que não usamos Ctrl+C
 
