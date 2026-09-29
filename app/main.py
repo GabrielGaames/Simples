@@ -158,6 +158,15 @@ async def importar_alunos(file: UploadFile = File(...), db: Session = Depends(ge
             return str(row[i]).strip()
 
         numero, nome, turma_nome, matricula, status = (value('numero_chamada'), value('nome'), value('turma'), value('matricula'), value('status'))
+        # Excel pode entregar o número da chamada como 1.0 quando a célula é numérica.
+        # O SIAP usa o número inteiro da chamada, então normalizamos antes de salvar.
+        if numero:
+            try:
+                numero_float = float(numero.replace(',', '.'))
+                if numero_float.is_integer():
+                    numero = str(int(numero_float))
+            except ValueError:
+                pass
         if not nome or not turma_nome or not matricula:
             ignorados += 1
             continue
@@ -401,10 +410,35 @@ def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None, db=Non
     doc.build(story); out.seek(0); return out
 
 
+def _normalize_numero_chamada(value):
+    """Normaliza o ID/número da chamada sem alterar IDs textuais válidos."""
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    try:
+        number = float(raw.replace(',', '.'))
+        if number.is_integer():
+            return str(int(number))
+    except ValueError:
+        pass
+    return raw
+
+
+def _numero_chamada_sort_key(value):
+    """Ordenação compatível com a chamada do SIAP: 1, 2, 3... 10, 11..."""
+    raw = _normalize_numero_chamada(value)
+    try:
+        return (0, int(raw), '')
+    except ValueError:
+        return (1, 10**9, raw.casefold())
+
+
 def _siap_rows(db: Session, turma_id: int, prova_nome: str):
-    alunos = db.query(Aluno).filter(Aluno.turma_id == turma_id).order_by(
-        Aluno.numero_chamada.asc().nullslast(), Aluno.nome.asc()
-    ).all()
+    # O SIAP apresenta os alunos pela ordem da chamada. Não usamos ordem alfabética
+    # nem ordenação textual do banco, pois ela colocaria 10 antes de 2.
+    alunos = db.query(Aluno).filter(Aluno.turma_id == turma_id).all()
+    alunos.sort(key=lambda a: (_numero_chamada_sort_key(a.numero_chamada), a.nome.casefold()))
+
     resultados = _turma_resultados(db, turma_id, prova_nome)
     latest = {}
     for r in resultados:
@@ -418,10 +452,8 @@ def _siap_rows(db: Session, turma_id: int, prova_nome: str):
             rows.append({
                 'resultado_id': None,
                 'aluno_id': aluno.id,
-                'numero_chamada': aluno.numero_chamada,
-                'matricula': aluno.matricula,
+                'numero_chamada': _normalize_numero_chamada(aluno.numero_chamada),
                 'nome': aluno.nome,
-                'status': aluno.status or 'ATIVO',
                 'presente_1': False, 'ausente_1': False,
                 'presente_2': False, 'ausente_2': False,
                 'quantidade_questoes': 0,
@@ -444,10 +476,8 @@ def _siap_rows(db: Session, turma_id: int, prova_nome: str):
         rows.append({
             'resultado_id': r.id,
             'aluno_id': aluno.id,
-            'numero_chamada': aluno.numero_chamada,
-            'matricula': aluno.matricula,
+            'numero_chamada': _normalize_numero_chamada(aluno.numero_chamada),
             'nome': aluno.nome,
-            'status': aluno.status or 'ATIVO',
             'presente_1': r.presente_1, 'ausente_1': r.ausente_1,
             'presente_2': r.presente_2, 'ausente_2': r.ausente_2,
             'quantidade_questoes': r.quantidade_questoes,
@@ -469,6 +499,9 @@ def siap_preview(turma_id: int, prova_nome: str, db: Session = Depends(get_db), 
     if not prova_nome:
         raise HTTPException(400, 'Selecione uma prova/bloco.')
     rows = _siap_rows(db, turma_id, prova_nome)
+    ids = [str(x.get('numero_chamada') or '').strip() for x in rows]
+    missing_ids = [x['nome'] for x in rows if not str(x.get('numero_chamada') or '').strip()]
+    duplicate_ids = sorted({value for value in ids if value and ids.count(value) > 1}, key=_numero_chamada_sort_key)
     counts = {
         'alunos': len(rows),
         'com_resultado': sum(1 for x in rows if x['tem_resultado']),
@@ -484,6 +517,11 @@ def siap_preview(turma_id: int, prova_nome: str, db: Session = Depends(get_db), 
         'quantidade_questoes': max_q,
         'resumo': counts,
         'resultados': rows,
+        'validacao': {
+            'ok': not missing_ids and not duplicate_ids,
+            'ids_ausentes': missing_ids,
+            'ids_duplicados': duplicate_ids,
+        },
     }
 
 @app.get('/api/turmas/{turma_id}/provas')

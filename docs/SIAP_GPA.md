@@ -1,33 +1,46 @@
 # ScoreView — módulo SIAP / GPA
 
-## Objetivo
+## Fluxo desta versão
 
-Preparar os resultados já corrigidos no ScoreView para o fluxo de lançamento de avaliações objetivas do SIAP.
+O ScoreView prepara os dados e o professor faz a etapa final manualmente no navegador:
 
-## O que o módulo faz
+**ScoreView → Copiar para GPA → Plugin GPA → SIAP**
 
-- Seleciona turma e prova/bloco.
-- Lista todos os alunos da turma, inclusive quem ainda não possui resultado.
-- Mostra presença/ausência da 1ª e 2ª chamada.
-- Marca cada questão somente quando o aluno acertou.
-- Mostra quantidade de acertos e percentual.
-- Permite copiar a tabela como TSV para a área de transferência.
-- Permite exportar a mesma estrutura como arquivo `.tsv`.
+O ScoreView não acessa nem altera diretamente o SIAP.
 
-## O que ainda não é feito
+## Formato da cópia para o GPA
 
-A versão 10.0 não injeta dados diretamente no SIAP nem controla a extensão PLUGIN GPA. A interface pública da extensão descreve uma automação própria entre a plataforma GPA e o SIAP, mas não fornece um contrato público de integração do ScoreView.
-
-A próxima etapa pode ser uma extensão própria do ScoreView ou um adaptador compatível, depois que o fluxo real do PLUGIN GPA/SIAP for validado no navegador utilizado pela escola.
-
-## Estrutura do TSV
+A cópia para a área de transferência contém **somente as linhas dos alunos, sem cabeçalho**, na ordem do número da chamada/ID:
 
 ```text
-ALUNO | MATRÍCULA | STATUS | PRESENTE 1ª | AUSENTE 1ª | PRESENTE 2ª | AUSENTE 2ª | 1 | ... | N | QTDE ACERTOS | % ACERTOS
+ALUNO | 1ª Pres. | 1ª Aus. | 2ª Pres. | 2ª Aus. | 1 | ... | N | Qtde Acertos | % Acertos
 ```
 
-Para as questões, `1` significa acerto e célula vazia significa que não deve ser marcada como acerto.
+O primeiro campo segue o padrão visual da lista do SIAP:
 
-## Segurança
+```text
+1 - NOME DO ALUNO
+2 - OUTRO ALUNO
+3 - OUTRO ALUNO
+```
 
-O módulo usa somente os resultados já armazenados no ScoreView e não altera o scanner.
+Não são enviados para a cópia:
+
+- matrícula;
+- status escolar;
+- ID interno do banco;
+- cabeçalho da tabela.
+
+Para cada questão, `1` significa que o aluno acertou; célula vazia significa que a questão não deve ser marcada como acerto.
+
+## Compatibilidade e validação
+
+- A ordenação é numérica pelo ID da chamada: `1, 2, 3 ... 10, 11 ...`.
+- IDs ausentes bloqueiam a cópia.
+- IDs duplicados bloqueiam a cópia.
+- O ID `1.0` recebido de uma célula numérica do Excel é normalizado para `1`.
+- A tela mantém a conferência visual antes da cópia.
+
+## Observação sobre quantidade de alunos
+
+O SIAP/Plugin GPA precisa trabalhar com a mesma lista de alunos. Por isso o ScoreView mantém uma linha para cada aluno cadastrado na turma, mesmo quando ele ainda não possui resultado da prova. A quantidade de linhas é mostrada na tela para conferência antes da cópia.
