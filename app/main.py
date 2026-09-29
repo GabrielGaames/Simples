@@ -400,6 +400,92 @@ def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None, db=Non
     story += [Paragraph('Dados da prova',h),rt,Spacer(1,3*mm),Paragraph('Estrutura: ID/chamada · matrícula · nome · status escolar · presença/ausência nas duas chamadas · Q1–Q45 · nota. Nas colunas Q1–Q45 aparece somente a alternativa quando o aluno acertou a questão; erros, brancos e anuladas ficam em branco.',sub)]
     doc.build(story); out.seek(0); return out
 
+
+def _siap_rows(db: Session, turma_id: int, prova_nome: str):
+    alunos = db.query(Aluno).filter(Aluno.turma_id == turma_id).order_by(
+        Aluno.numero_chamada.asc().nullslast(), Aluno.nome.asc()
+    ).all()
+    resultados = _turma_resultados(db, turma_id, prova_nome)
+    latest = {}
+    for r in resultados:
+        if r.aluno_id not in latest:
+            latest[r.aluno_id] = r
+
+    rows = []
+    for aluno in alunos:
+        r = latest.get(aluno.id)
+        if r is None:
+            rows.append({
+                'resultado_id': None,
+                'aluno_id': aluno.id,
+                'numero_chamada': aluno.numero_chamada,
+                'matricula': aluno.matricula,
+                'nome': aluno.nome,
+                'status': aluno.status or 'ATIVO',
+                'presente_1': False, 'ausente_1': False,
+                'presente_2': False, 'ausente_2': False,
+                'quantidade_questoes': 0,
+                'acertos': 0,
+                'percentual': None,
+                'acertos_questoes': [],
+                'tem_resultado': False,
+            })
+            continue
+
+        respostas = (r.respostas or '').split(',')
+        gabarito = (r.gabarito or '').split(',')
+        acertos_questoes = []
+        for i in range(r.quantidade_questoes):
+            ans = respostas[i].strip().upper() if i < len(respostas) else ''
+            key = gabarito[i].strip().upper() if i < len(gabarito) else ''
+            if ans and ans != 'MULT' and key and ans == key:
+                acertos_questoes.append(i + 1)
+
+        rows.append({
+            'resultado_id': r.id,
+            'aluno_id': aluno.id,
+            'numero_chamada': aluno.numero_chamada,
+            'matricula': aluno.matricula,
+            'nome': aluno.nome,
+            'status': aluno.status or 'ATIVO',
+            'presente_1': r.presente_1, 'ausente_1': r.ausente_1,
+            'presente_2': r.presente_2, 'ausente_2': r.ausente_2,
+            'quantidade_questoes': r.quantidade_questoes,
+            'acertos': r.acertos,
+            'percentual': round((r.acertos / r.quantidade_questoes) * 100, 2) if r.quantidade_questoes else None,
+            'acertos_questoes': acertos_questoes,
+            'tem_resultado': True,
+        })
+    return rows
+
+@app.get('/api/turmas/{turma_id}/siap')
+def siap_preview(turma_id: int, prova_nome: str, db: Session = Depends(get_db), user: Usuario = Depends(current_user)):
+    turma = db.get(Turma, turma_id)
+    if not turma:
+        raise HTTPException(404, 'Turma não encontrada.')
+    if not can_access_turma(user, turma_id):
+        raise HTTPException(403, 'Você não tem acesso a esta turma.')
+    prova_nome = prova_nome.strip()
+    if not prova_nome:
+        raise HTTPException(400, 'Selecione uma prova/bloco.')
+    rows = _siap_rows(db, turma_id, prova_nome)
+    counts = {
+        'alunos': len(rows),
+        'com_resultado': sum(1 for x in rows if x['tem_resultado']),
+        'presentes_1': sum(1 for x in rows if x['presente_1']),
+        'ausentes_1': sum(1 for x in rows if x['ausente_1']),
+        'presentes_2': sum(1 for x in rows if x['presente_2']),
+        'ausentes_2': sum(1 for x in rows if x['ausente_2']),
+    }
+    max_q = max((x['quantidade_questoes'] for x in rows if x['tem_resultado']), default=0)
+    return {
+        'turma': {'id': turma.id, 'nome': turma.nome},
+        'prova': prova_nome,
+        'quantidade_questoes': max_q,
+        'resumo': counts,
+        'resultados': rows,
+    }
+
 @app.get('/api/turmas/{turma_id}/provas')
 def listar_provas_turma(turma_id:int, db:Session=Depends(get_db), user:Usuario=Depends(current_user)):
     turma=db.get(Turma,turma_id)

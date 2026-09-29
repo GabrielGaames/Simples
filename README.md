@@ -68,3 +68,15 @@ The result includes a confidence value per detected answer and a list of low-con
 - Recarregamento sem cache para endpoints GET.
 - Sincronização ao voltar para a aba/janela e a cada 60 segundos enquanto o usuário estiver logado.
 - Preserva turma, aluno e prova selecionados durante a sincronização.
+
+
+## Versão 10.0 — módulo SIAP / GPA
+- Nova aba **SIAP / GPA** para preparar lançamentos a partir dos resultados já corrigidos.
+- Seleção de turma e prova/bloco.
+- Pré-visualização com aluno, matrícula, presença/ausência em 1ª e 2ª chamada, Q1–Q45, quantidade de acertos e percentual.
+- Cada questão é marcada apenas quando o aluno realmente acertou.
+- Alunos sem resultado permanecem visíveis para conferência e não recebem acertos automaticamente.
+- Botão para copiar a tabela em formato tabular (TSV) para a área de transferência.
+- Exportação do mesmo conjunto de dados em TSV para conferência/uso externo.
+- O módulo não altera a lógica do scanner.
+- A automação direta dentro do SIAP/PLUGIN GPA não é assumida nesta versão; ela depende da interface da extensão e do navegador. A integração automática será tratada em uma etapa própria, após validar o formato de comunicação.
