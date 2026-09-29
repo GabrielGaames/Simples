@@ -52,12 +52,12 @@
     </div>
     <div class="reportActions">
       <button id="prepareSiap" class="btn">☑ Preparar lançamento</button>
-      <button id="copySiap" class="btn secondary" disabled>📋 Copiar para o Plugin GPA</button>
+      <button id="copySiap" class="btn secondary" disabled>🧩 Preparar para o Plugin GPA</button>
       <button id="copySiapGrid" class="btn secondary" disabled>▦ Copiar grade (planilha)</button>
     </div>
     <div id="siapStatus" class="status"></div>
     <div class="guide">
-      <b>Fluxo:</b> o ScoreView prepara a turma inteira, mantendo a mesma quantidade de alunos do SIAP. O botão <b>Copiar para o Plugin GPA</b> usa um formato compacto por <b>nome do aluno + questões acertadas</b>, sem matrícula, presença ou cabeçalho. Depois, no SIAP, use <b>Plugin GPA → Colar (SIAP)</b>. A opção <b>Copiar grade (planilha)</b> fica disponível apenas para conferência/diagnóstico.
+      <b>Fluxo real:</b> o ScoreView prepara a turma inteira no mesmo formato que o PLUGIN GPA espera: <code>tr.linhaAluno</code>, <code>data-number</code>, quatro marcações de chamada e uma marcação por questão. Depois, clique com o botão direito nesta página → <b>PLUGIN GPA → Copiar (GPA)</b>. Em seguida, abra o SIAP → <b>PLUGIN GPA → Colar (SIAP)</b>. O botão acima apenas prepara/valida a página; ele não usa a área de transferência.
     </div>
   </div>
 
@@ -71,10 +71,15 @@
       </table>
     </div>
     <div class="guide">
-      <b>Importante:</b> todos os alunos da turma são mantidos, inclusive os que estão sem resultado. Isso evita a diferença de quantidade de alunos que o SIAP informou. Para o Plugin GPA, a cópia usa o <b>nome exato do aluno</b> como chave e lista somente os números das questões acertadas. A matrícula não é enviada.
+      <b>Importante:</b> todos os alunos da turma são mantidos, inclusive os que estão sem resultado. O ID/chamada é enviado no atributo <code>data-number</code>, exatamente como o Plugin GPA original coleta no GPA. A matrícula não participa da integração.
     </div>
   </div>
 </section>
+
+<!-- DOM compatível com o PLUGIN GPA. O plugin coleta tr.linhaAluno + data-number + checkboxes. -->
+<div id="pluginGpaCompat" aria-hidden="true" style="position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;">
+  <table id="pluginGpaCompatTable"><tbody id="pluginGpaCompatBody"></tbody></table>
+</div>
 
 <section class="view" data-view-panel="students"><div class="page-head"><div><h1>Alunos e turmas</h1><p class="muted">Importe a planilha institucional para atualizar os cadastros.</p></div></div><div id="adminImportCard" class="card"><h2>Importar alunos</h2><p class="muted">Arquivo .xlsx com as colunas <b>ID (número da chamada)</b>, Nome do aluno, Turma e Matrícula. A coluna Status é opcional e aceita ATIVO ou NÃO ATIVO.</p><div class="field"><label class="btn secondary" for="studentsFile">📄 Selecionar planilha</label><input id="studentsFile" type="file" accept=".xlsx,.xlsm"><button id="importStudents" class="btn" disabled>Importar planilha</button><div id="importStatus" class="status"></div></div></div><div id="classesAdminCard" class="card"><h2>Turmas cadastradas</h2><p class="muted">Exclua uma turma somente quando tiver certeza. A exclusão remove os alunos, resultados de provas e vínculos de professores daquela turma.</p><div class="tableWrap"><table><thead><tr><th>Turma</th><th>Alunos</th><th>Ações</th></tr></thead><tbody id="classesAdminBody"><tr><td colspan="3">Carregando...</td></tr></tbody></table></div><div id="classDeleteStatus" class="status"></div></div></section>
 <section class="view" data-view-panel="users"><div class="page-head"><div><h1>Professores</h1><p class="muted">Cadastre usuários e determine quais turmas cada professor pode acessar.</p></div></div><div id="adminUsersCard" class="card" style="display:none"><div class="row"><div class="field"><label>Nome</label><input id="userName" placeholder="Professor Gabriel"></div><div class="field"><label>Login</label><input id="userLogin" placeholder="gabriel"></div></div><div class="row"><div class="field"><label>Senha</label><input id="userPass" type="password" placeholder="mínimo 6 caracteres"></div><div class="field"><label>Perfil</label><select id="userType"><option value="professor">Professor</option><option value="admin">Administrador</option></select></div></div><div class="field"><label>Turmas permitidas</label><div id="userClasses" class="guide"></div></div><button id="createUser" class="btn" style="width:100%">Criar usuário</button><div id="userStatus" class="status"></div><div class="tableWrap"><table><thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Turmas</th><th>Status</th><th>Ações</th></tr></thead><tbody id="usersBody"></tbody></table></div></div></section>
@@ -130,7 +135,7 @@ const resultCard=document.querySelector('#resultCard'), questionsBox=document.qu
 let file=null, lastResult=null, reviewConfirmed=false, reviewSelections={};
 const classSelect=document.querySelector('#classSelect'), studentSelect=document.querySelector('#studentSelect'), examName=document.querySelector('#examName'), saveResultBtn=document.querySelector('#saveResult'), saveStatus=document.querySelector('#saveStatus'), attendance1=document.querySelector('#attendance1'), attendance2=document.querySelector('#attendance2');
 const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary'), reportExam=document.querySelector('#reportExam'), diagnosticText=document.querySelector('#diagnosticText'), diagnosticQuestions=document.querySelector('#diagnosticQuestions'), exportClassPdf=document.querySelector('#exportClassPdf');
-const siapClass=document.querySelector('#siapClass'), siapExam=document.querySelector('#siapExam'), siapDiscipline=document.querySelector('#siapDiscipline'), siapBimestre=document.querySelector('#siapBimestre'), prepareSiap=document.querySelector('#prepareSiap'), copySiap=document.querySelector('#copySiap'), copySiapGrid=document.querySelector('#copySiapGrid'), siapStatus=document.querySelector('#siapStatus'), siapResultCard=document.querySelector('#siapResultCard'), siapSummary=document.querySelector('#siapSummary'), siapHead=document.querySelector('#siapHead'), siapBody=document.querySelector('#siapBody');
+const siapClass=document.querySelector('#siapClass'), siapExam=document.querySelector('#siapExam'), siapDiscipline=document.querySelector('#siapDiscipline'), siapBimestre=document.querySelector('#siapBimestre'), prepareSiap=document.querySelector('#prepareSiap'), copySiap=document.querySelector('#copySiap'), copySiapGrid=document.querySelector('#copySiapGrid'), siapStatus=document.querySelector('#siapStatus'), siapResultCard=document.querySelector('#siapResultCard'), siapSummary=document.querySelector('#siapSummary'), siapHead=document.querySelector('#siapHead'), siapBody=document.querySelector('#siapBody'), pluginGpaCompatBody=document.querySelector('#pluginGpaCompatBody');
 let lastSiapData=null;
 
 const KEY_STORAGE_PREFIX='eduscanner_gabarito_';
@@ -519,8 +524,30 @@ function buildSiapGridHtml(data){
   return html;
 }
 
+function renderPluginGpaCompat(data){
+  if(!pluginGpaCompatBody)return;
+  const qCount=Number(data.quantidade_questoes||0);
+  const rows=data.resultados||[];
+  pluginGpaCompatBody.innerHTML=rows.map(x=>{
+    const id=String(x.numero_chamada??'').trim();
+    const hits=new Set(x.acertos_questoes||[]);
+    // O PLUGIN GPA original coleta todos os checkboxes em ordem:
+    // 0=1ª presença, 1=1ª ausência, 2=2ª presença, 3=2ª ausência,
+    // 4..=questões. Mantemos exatamente essa ordem.
+    const checks=[!!x.presente_1,!!x.ausente_1,!!x.presente_2,!!x.ausente_2];
+    for(let i=1;i<=qCount;i++) checks.push(x.tem_resultado && hits.has(i));
+    const checkHtml=checks.map((v,i)=>`<input type="checkbox" ${v?'checked':''} aria-label="${i<4?'chamada':'questao '+(i-3)}">`).join('');
+    return `<tr class="linhaAluno" data-number="${escapeHtml(id)}"><td>${escapeHtml(id)} - ${escapeHtml(x.nome||'')}</td>${checkHtml}<td><input type="text" value="${x.tem_resultado?Number(x.acertos||0):0}"></td></tr>`;
+  }).join('');
+}
+
+function escapeHtml(value){
+  return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function renderSiap(data){
   lastSiapData=data;
+  renderPluginGpaCompat(data);
   const qCount=Number(data.quantidade_questoes||0);
   const validation=data.validacao||{ok:true,ids_ausentes:[],ids_duplicados:[]};
   if(!qCount){
@@ -588,19 +615,10 @@ siapExam.addEventListener('change',()=>{siapResultCard.style.display='none';last
 
 copySiap.addEventListener('click',async()=>{
   if(!lastSiapData || lastSiapData.validacao?.ok===false)return;
-  try{
-    const pluginText=buildSiapPluginClipboard(lastSiapData);
-    const gridText=buildSiapGridClipboard(lastSiapData,{includeHeader:false});
-    const html=buildSiapGridHtml(lastSiapData);
-    await copyTextToClipboard(pluginText,html,gridText);
-    siapStatus.className='status ok';
-    siapStatus.textContent=`✓ ${lastSiapData.resultados?.length||0} alunos copiados para o Plugin GPA. A lista inclui também alunos sem resultado. Agora, no SIAP, use Plugin GPA → Colar (SIAP).`;
-    siapStatus.style.display='block';
-  }catch(e){
-    siapStatus.className='status error';
-    siapStatus.textContent=`Não foi possível copiar os dados: ${e.message||'erro do navegador'}`;
-    siapStatus.style.display='block';
-  }
+  renderPluginGpaCompat(lastSiapData);
+  siapStatus.className='status ok';
+  siapStatus.innerHTML=`✓ Página preparada para o PLUGIN GPA com <b>${lastSiapData.resultados?.length||0} alunos</b>. Agora clique com o botão direito nesta página → <b>PLUGIN GPA → Copiar (GPA)</b>. Depois abra o SIAP e use <b>PLUGIN GPA → Colar (SIAP)</b>.`;
+  siapStatus.style.display='block';
 });
 
 copySiapGrid.addEventListener('click',async()=>{
