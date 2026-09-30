@@ -180,6 +180,7 @@ updateKeyState();
 photo.addEventListener('change',()=>{
   file=photo.files?.[0]||null;
   if(!file)return;
+  // Cada nova foto inicia uma nova leitura. Nunca reutilizar o resultado anterior.
   if(preview.src && preview.src.startsWith('blob:')) URL.revokeObjectURL(preview.src);
   preview.src=URL.createObjectURL(file);
   preview.style.display='block';
@@ -190,6 +191,9 @@ photo.addEventListener('change',()=>{
   reviewSelections={};
   reviewBox.style.display='none';
   confirmReview.style.display='none';
+  saveStatus.style.display='none';
+  lastSavedResultId=null;
+  document.querySelector('#exportSavedPdf').style.display='none';
   updateKeyState();
 });
 
@@ -370,7 +374,41 @@ async function loadStudents(){
   studentSelect.innerHTML='<option value="">Selecione o aluno...</option>'+items.map(a=>`<option value="${a.id}">${a.numero_chamada ? a.numero_chamada+' · ' : ''}${a.nome} · ${a.matricula} · ${a.status||'ATIVO'}</option>`).join('');
 }
 
-studentSelect.addEventListener('change',()=>{saveResultBtn.disabled=!studentSelect.value || !lastResult;});
+function clearCorrectionSession({clearStudent=true}={}){
+  // Limpa completamente o estado da correção atual para evitar reaproveitar
+  // foto, resultado ou aluno da correção anterior. A turma, bloco e gabarito
+  // permanecem selecionados para agilizar a próxima correção.
+  if(preview.src && preview.src.startsWith('blob:')) URL.revokeObjectURL(preview.src);
+  preview.removeAttribute('src');
+  preview.style.display='none';
+  photo.value='';
+  file=null;
+  lastResult=null;
+  reviewConfirmed=false;
+  reviewSelections={};
+  questionsBox.innerHTML='';
+  summary.innerHTML='';
+  reviewBox.innerHTML='';
+  reviewBox.style.display='none';
+  confirmReview.style.display='none';
+  saveResultBtn.disabled=true;
+  saveStatus.style.display='none';
+  statusBox.style.display='none';
+  lastSavedResultId=null;
+  document.querySelector('#exportSavedPdf').style.display='none';
+  if(clearStudent){
+    studentSelect.value='';
+  }
+  updateKeyState();
+}
+
+studentSelect.addEventListener('change',()=>{
+  // Ao trocar manualmente de aluno, nunca reaproveitar o resultado da foto anterior.
+  if(lastResult){
+    clearCorrectionSession({clearStudent:false});
+  }
+  saveResultBtn.disabled=!studentSelect.value || !lastResult;
+});
 studentsFile.addEventListener('change',()=>{importStudents.disabled=!studentsFile.files?.[0];});
 importStudents.addEventListener('click',async()=>{
   const f=studentsFile.files?.[0]; if(!f)return; importStudents.disabled=true; importStudents.textContent='Importando...';
@@ -393,9 +431,27 @@ saveResultBtn.addEventListener('click',async()=>{
   if(!examName.value){saveStatus.textContent='Selecione o bloco da prova antes de salvar.';saveStatus.className='status error';return;}
   const body={aluno_id:Number(studentSelect.value),prova_nome:examName.value,quantidade_questoes:count,gabarito:key,questions:lastResult.questions,presente_1:attendance1.value==='present',ausente_1:attendance1.value==='absent',presente_2:attendance2.value==='present',ausente_2:attendance2.value==='absent'};
   saveResultBtn.disabled=true; saveResultBtn.textContent='Salvando...';
-  try{const r=await apiFetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Erro ao salvar'); await refreshData({students:true,report:true}); saveStatus.className='status ok'; saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`; saveStatus.style.display='block'; lastSavedResultId=d.id; document.querySelector('#exportSavedPdf').style.display='block'; await showReport();}
+  try{
+    const r=await apiFetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Erro ao salvar');
+    saveStatus.className='status ok';
+    saveStatus.textContent=`Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos.`;
+    saveStatus.style.display='block';
+    lastSavedResultId=d.id;
+    document.querySelector('#exportSavedPdf').style.display='block';
+    await refreshData({students:true,report:true});
+    await showReport();
+    // Após salvar, encerra a sessão da correção atual. Isso evita que a próxima
+    // foto ou aluno reutilize o estado anterior por cache/estado do navegador.
+    clearCorrectionSession({clearStudent:true});
+    // Mantém apenas a confirmação visual por alguns segundos.
+    saveStatus.className='status ok';
+    saveStatus.textContent=`✓ Resultado salvo. Nota: ${Number(d.nota).toFixed(2)} · ${d.acertos} acertos. Pronto para a próxima correção.`;
+    saveStatus.style.display='block';
+  }
   catch(e){saveStatus.className='status error';saveStatus.textContent=e.message;saveStatus.style.display='block';}
-  finally{saveResultBtn.textContent='💾 Salvar resultado do aluno';saveResultBtn.disabled=false;}
+  finally{saveResultBtn.textContent='💾 Salvar resultado do aluno';saveResultBtn.disabled=!studentSelect.value || !lastResult;}
 });
 async function loadReportExams(){
   if(!classSelect.value){reportExam.innerHTML='<option value="">Todas as provas</option>';return;}
@@ -421,7 +477,20 @@ async function showReport(){
   reportBody.querySelectorAll('.reportPdf').forEach(b=>b.addEventListener('click',()=>window.open(`/api/resultados/${b.dataset.id}/pdf`,'_blank')));
   reportBody.querySelectorAll('.reportDelete').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Excluir o resultado de ${b.dataset.name}? Esta ação não pode ser desfeita.`))return;const rr=await apiFetch(`/api/resultados/${b.dataset.id}`,{method:'DELETE'});const dd=await rr.json();if(!rr.ok){alert(dd.detail||'Erro ao excluir');return;}await refreshData({students:false,report:true});}));
 }
-classSelect.addEventListener('change',async()=>{await loadStudents();reportBody.innerHTML='';reportSummary.innerHTML='';diagnosticText.textContent='Carregando provas...';await loadReportExams();await showReport();await loadSiapClasses();});
+classSelect.addEventListener('change',async()=>{
+  // Trocar de turma inicia uma nova sessão de correção. Isso evita associar
+  // a foto/resultado anterior ao primeiro aluno da nova turma.
+  clearCorrectionSession({clearStudent:true});
+  await loadStudents();
+  reportBody.innerHTML='';reportSummary.innerHTML='';diagnosticText.textContent='Carregando provas...';
+  await loadReportExams();await showReport();await loadSiapClasses();
+});
+
+examName.addEventListener('change',()=>{
+  // Trocar o bloco/prova também invalida a leitura anterior. O gabarito fica
+  // preservado para não atrapalhar a configuração, mas o resultado da foto é descartado.
+  clearCorrectionSession({clearStudent:true});
+});
 reportExam.addEventListener('change',showReport);
 loadReport.addEventListener('click',showReport);
 exportClassPdf.addEventListener('click',()=>{if(!classSelect.value){alert('Selecione uma turma.');return;}const params=reportExam.value?`?prova_nome=${encodeURIComponent(reportExam.value)}`:'';window.open(`/api/turmas/${classSelect.value}/relatorio/pdf${params}`,'_blank');});
