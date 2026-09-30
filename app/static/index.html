@@ -72,7 +72,7 @@
     </div>
     <div class="guide">
       <b>Importante:</b> todos os alunos da turma são mantidos, inclusive os que estão sem resultado. O ID/chamada é enviado no atributo <code>data-number</code>, exatamente como o Plugin GPA original coleta no GPA. A matrícula não participa da integração.<br>
-      <b>Bloco 06:</b> ao selecionar a disciplina, o ScoreView envia somente o recorte correspondente: <b>Biologia 01–15</b>, <b>Sociologia 16–23</b> ou <b>Filosofia 24–30</b>. No SIAP, esses recortes são renumerados a partir da questão 01.
+      <b>Recortes por bloco:</b> Bloco 01 — Português Q01–Q20; Bloco 02 — Geografia Q01–Q15 / História Q16–Q30; Bloco 03 — Matemática Q01–Q20; Bloco 04 — Inglês Q01–Q10 / Arte Q11–Q20 / Educação Física Q21–Q30; Bloco 05 — Física Q01–Q15 / Química Q16–Q30; Bloco 06 — Biologia Q01–Q15 / Sociologia Q16–Q23 / Filosofia Q24–Q30. No SIAP, cada recorte é renumerado a partir da questão 01.
     </div>
   </div>
 </section>
@@ -456,34 +456,73 @@ function normalizePluginName(value){
   return String(value??'').replace(/\s+/g,' ').trim();
 }
 
-// Recortes oficiais do Bloco 06 para lançamento de cada disciplina no SIAP.
-// As questões do cartão são globais (1–30), mas cada avaliação do SIAP deve
-// receber somente as questões pertencentes à disciplina selecionada,
-// renumeradas localmente a partir de 1.
-const SIAP_DISCIPLINE_RANGES = {
-  biologia: {start:1, end:15},
-  sociologia: {start:16, end:23},
-  filosofia: {start:24, end:30},
+// Recortes oficiais dos Blocos 01–06 para lançamento por disciplina no SIAP.
+// As questões do cartão são globais dentro do bloco. O SIAP recebe somente
+// o recorte da disciplina selecionada e renumera esse recorte a partir da Q01.
+// Ex.: Bloco 02 / História = cartão Q16–Q30 -> SIAP Q01–Q15.
+const SIAP_BLOCK_DISCIPLINES = {
+  1: {
+    'portugues': {start:1, end:20},
+    'lingua portuguesa': {start:1, end:20},
+  },
+  2: {
+    'geografia': {start:1, end:15},
+    'historia': {start:16, end:30},
+  },
+  3: {
+    'matematica': {start:1, end:20},
+  },
+  4: {
+    'ingles': {start:1, end:10},
+    'arte': {start:11, end:20},
+    'artes': {start:11, end:20},
+    'educacao fisica': {start:21, end:30},
+  },
+  5: {
+    'fisica': {start:1, end:15},
+    'quimica': {start:16, end:30},
+  },
+  6: {
+    'biologia': {start:1, end:15},
+    'sociologia': {start:16, end:23},
+    'filosofia': {start:24, end:30},
+  },
 };
 
 function normalizeDiscipline(value){
   return String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
 }
 
-function isBlock6(examName){
-  return /\bbloco\s*0?6\b/i.test(String(examName??''));
+function getSiapBlockNumber(examName){
+  const m=String(examName??'').match(/\bbloco\s*0?([1-8])\b/i);
+  return m ? Number(m[1]) : null;
+}
+
+function getSiapBlockDisciplineMap(examName){
+  const block=getSiapBlockNumber(examName);
+  return block ? (SIAP_BLOCK_DISCIPLINES[block]||null) : null;
 }
 
 function getSiapDisciplineRange(examName, discipline){
-  if(!discipline || !isBlock6(examName)) return null;
-  return SIAP_DISCIPLINE_RANGES[normalizeDiscipline(discipline)] || null;
+  if(!discipline) return null;
+  const map=getSiapBlockDisciplineMap(examName);
+  if(!map) return null;
+  return map[normalizeDiscipline(discipline)] || null;
+}
+
+function requiresSiapDisciplineSelection(examName){
+  return Boolean(getSiapBlockDisciplineMap(examName));
 }
 
 function projectSiapDataByDiscipline(sourceData){
   const discipline=siapDiscipline?.value||'';
+  const map=getSiapBlockDisciplineMap(sourceData?.prova);
   const range=getSiapDisciplineRange(sourceData?.prova, discipline);
   if(!range){
-    return {...sourceData, _siapRecorte:null};
+    return {
+      ...sourceData,
+      _siapRecorte: map ? {required:true, invalid:Boolean(discipline), disciplina:discipline} : null
+    };
   }
 
   const qCount=range.end-range.start+1;
@@ -653,7 +692,14 @@ function renderSiap(data){
     return `<tr class="${rowClass}"><td><b>${aluno}</b>${!x.tem_resultado?'<div class="siapPending">Sem resultado</div>':''}</td><td>${attendance(x.presente_1)}</td><td>${attendance(x.ausente_1)}</td><td>${attendance(x.presente_2)}</td><td>${attendance(x.ausente_2)}</td>${qCells}<td>${x.tem_resultado?x.acertos:'—'}</td><td>${x.tem_resultado&&x.percentual!=null?x.percentual.toFixed(2).replace('.',',')+'%':'—'}</td></tr>`;
   }).join('');
   const s=data.resumo||{};
+  const rangeInfo=viewData._siapRecorte;
+  const disciplineRequired=requiresSiapDisciplineSelection(viewData.prova);
+  const disciplineReady=!disciplineRequired || Boolean(rangeInfo && rangeInfo.inicio);
+  const disciplineInvalid=disciplineRequired && !disciplineReady && Boolean(siapDiscipline?.value);
+  const disciplineMissing=disciplineRequired && !disciplineReady && !siapDiscipline?.value;
   const warningParts=[];
+  if(disciplineMissing) warningParts.push('Selecione a disciplina para aplicar o recorte correto das questões');
+  if(disciplineInvalid) warningParts.push(`A disciplina "${siapDiscipline.value}" não pertence ao ${viewData.prova}`);
   if(validation.ids_ausentes?.length) warningParts.push(`${validation.ids_ausentes.length} aluno(s) sem ID de chamada`);
   if(validation.ids_duplicados?.length) warningParts.push(`ID(s) duplicado(s): ${validation.ids_duplicados.join(', ')}`);
   if(warningParts.length){
@@ -661,7 +707,6 @@ function renderSiap(data){
     siapStatus.textContent=`⚠ ${warningParts.join(' · ')}. Corrija o cadastro antes de copiar para o GPA.`;
     siapStatus.style.display='block';
   }
-  const rangeInfo=viewData._siapRecorte;
   siapSummary.innerHTML=[
     `Alunos: ${s.alunos||0}`,
     `Com resultado: ${s.com_resultado||0}`,
@@ -669,11 +714,12 @@ function renderSiap(data){
     `Ausentes 1ª: ${s.ausentes_1||0}`,
     `Presentes 2ª: ${s.presentes_2||0}`,
     `Ausentes 2ª: ${s.ausentes_2||0}`,
-    rangeInfo ? `${rangeInfo.disciplina}: Q${String(rangeInfo.inicio).padStart(2,'0')}–Q${String(rangeInfo.fim).padStart(2,'0')} → ${qCount} questões` : `Questões: ${qCount}`,
+    rangeInfo?.inicio ? `${rangeInfo.disciplina}: Q${String(rangeInfo.inicio).padStart(2,'0')}–Q${String(rangeInfo.fim).padStart(2,'0')} → ${qCount} questões` : (disciplineRequired ? `Disciplina: ${siapDiscipline.value||'selecione'} · recorte obrigatório` : `Questões: ${qCount}`),
     'Ordem: ID / chamada'
   ].map(t=>`<span class="pill">${t}</span>`).join('');
   siapResultCard.style.display='block';
-  copySiap.disabled=!validation.ok; copySiapGrid.disabled=!validation.ok;
+  const canCopy=validation.ok && disciplineReady;
+  copySiap.disabled=!canCopy; copySiapGrid.disabled=!canCopy;
 }
 
 async function prepareSiapData(){
@@ -686,10 +732,13 @@ async function prepareSiapData(){
     renderSiap(d);
     if(d.validacao?.ok!==false){
       const range=getSiapDisciplineRange(d.prova,siapDiscipline.value);
-      siapStatus.className='status ok';
+      const required=requiresSiapDisciplineSelection(d.prova);
+      siapStatus.className=(required && !range)?'status error':'status ok';
       siapStatus.textContent=range
-        ? `Dados preparados para ${d.turma.nome} · ${d.prova}. ${siapDiscipline.value}: questões ${String(range.start).padStart(2,'0')}–${String(range.end).padStart(2,'0')} (${range.end-range.start+1} questões).`
-        : `Dados preparados para ${d.turma.nome} · ${d.prova}. ${d.resumo?.alunos||0} alunos serão mantidos na cópia, inclusive os sem resultado.`;
+        ? `Dados preparados para ${d.turma.nome} · ${d.prova}. ${siapDiscipline.value}: questões ${String(range.start).padStart(2,'0')}–${String(range.end).padStart(2,'0')} (${range.end-range.start+1} questões) → SIAP Q01–Q${range.end-range.start+1}.`
+        : required
+          ? `Selecione a disciplina correta para ${d.prova}. O recorte por disciplina é obrigatório antes de copiar para o GPA.`
+          : `Dados preparados para ${d.turma.nome} · ${d.prova}. ${d.resumo?.alunos||0} alunos serão mantidos na cópia, inclusive os sem resultado.`;
       siapStatus.style.display='block';
     }
   }catch(e){
@@ -704,10 +753,11 @@ siapDiscipline.addEventListener('change',()=>{
   if(lastSiapData){
     renderSiap(lastSiapData);
     const range=getSiapDisciplineRange(lastSiapData.prova,siapDiscipline.value);
-    siapStatus.className=range?'status ok':'status';
+    const required=requiresSiapDisciplineSelection(lastSiapData.prova);
+    siapStatus.className=(required && !range)?'status error':(range?'status ok':'status');
     siapStatus.textContent=range
-      ? `✓ ${siapDiscipline.value}: serão enviadas somente as questões ${String(range.start).padStart(2,'0')}–${String(range.end).padStart(2,'0')} (${range.end-range.start+1} questões).`
-      : (siapDiscipline.value ? 'ℹ Este bloco ainda não possui um recorte específico configurado; todas as questões salvas serão exibidas.' : 'Selecione uma disciplina para aplicar um recorte de questões.');
+      ? `✓ ${siapDiscipline.value}: serão enviadas somente as questões ${String(range.start).padStart(2,'0')}–Q${String(range.end).padStart(2,'0')} do cartão, renumeradas no SIAP de Q01–Q${range.end-range.start+1}.`
+      : (required ? `⚠ ${siapDiscipline.value ? `"${siapDiscipline.value}" não possui recorte configurado para ${lastSiapData.prova}.` : 'Selecione a disciplina correspondente ao bloco.'}` : 'ℹ Este bloco não possui recorte por disciplina configurado; todas as questões salvas serão exibidas.');
     siapStatus.style.display='block';
   }
 });

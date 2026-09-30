@@ -1,4 +1,4 @@
-# ScoreView 10.6
+# ScoreView 10.8
 
 Versão atual do EduScanner com scanner de 45 questões, turmas, alunos, resultados e relatórios.
 
@@ -94,11 +94,14 @@ The result includes a confidence value per detected answer and a list of low-con
 - Cópia secundária em grade TSV/HTML para conferência em planilha.
 - Colagem no SIAP continua sendo feita pelo Plugin GPA.
 
-## 10.7 — SIAP/GPA por disciplina no Bloco 06
+## 10.8 — SIAP/GPA por disciplina nos Blocos 01–06
 
-Na tela SIAP / GPA, o Bloco 06 possui recorte por disciplina:
-- Biologia: Q01–Q15;
-- Sociologia: Q16–Q23;
-- Filosofia: Q24–Q30.
+A tela SIAP / GPA agora aplica os recortes definidos para cada bloco:
+- Bloco 01: Português Q01–Q20;
+- Bloco 02: Geografia Q01–Q15 / História Q16–Q30;
+- Bloco 03: Matemática Q01–Q20;
+- Bloco 04: Inglês Q01–Q10 / Arte Q11–Q20 / Educação Física Q21–Q30;
+- Bloco 05: Física Q01–Q15 / Química Q16–Q30;
+- Bloco 06: Biologia Q01–Q15 / Sociologia Q16–Q23 / Filosofia Q24–Q30.
 
-O recorte é renumerado localmente para o lançamento da avaliação correspondente no SIAP.
+Ao copiar para o Plugin GPA, cada recorte é renumerado localmente a partir da questão 01. Para os Blocos 01–06, a seleção da disciplina é obrigatória antes da cópia.
