@@ -299,9 +299,38 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
     if not aluno: raise HTTPException(404,'Aluno não encontrado.')
     if not can_access_turma(user,aluno.turma_id): raise HTTPException(403,'Você não tem acesso a este aluno.')
     count=payload.quantidade_questoes
-    if count not in (20,30,45) or len(payload.gabarito)!=count: raise HTTPException(400,'Quantidade/gabarito inválido.')
+    if count not in (20,30,45): raise HTTPException(400,'Quantidade de questões inválida.')
     if payload.presente_1 and payload.ausente_1: raise HTTPException(400,'A 1ª chamada não pode ser presente e ausente ao mesmo tempo.')
     if payload.presente_2 and payload.ausente_2: raise HTTPException(400,'A 2ª chamada não pode ser presente e ausente ao mesmo tempo.')
+
+    # Ausência pode ser registrada sem foto. Só permitimos esse modo quando
+    # não existe nenhuma chamada marcada como presente, pois uma presença
+    # exige a correção da prova para gerar o resultado.
+    absent_only = (payload.ausente_1 or payload.ausente_2) and not (payload.presente_1 or payload.presente_2) and not payload.questions
+    if absent_only:
+        normalized_key = list(payload.gabarito or [])
+        if len(normalized_key) != count:
+            normalized_key = [''] * count
+        result=Resultado(
+            aluno_id=aluno.id,
+            prova_nome=payload.prova_nome.strip() or 'Prova',
+            quantidade_questoes=count,
+            gabarito=','.join(normalized_key),
+            respostas='',
+            acertos=0,
+            erros=0,
+            anuladas=0,
+            em_branco=0,
+            nota=0,
+            presente_1=payload.presente_1,
+            ausente_1=payload.ausente_1,
+            presente_2=payload.presente_2,
+            ausente_2=payload.ausente_2,
+        )
+        db.add(result); db.commit(); db.refresh(result)
+        return {'id':result.id,'acertos':0,'erros':0,'anuladas':0,'em_branco':0,'nota':0,'ausente_sem_foto':True}
+
+    if len(payload.gabarito)!=count: raise HTTPException(400,'Quantidade/gabarito inválido.')
     qs=sorted(payload.questions,key=lambda q:int(q.get('number',0)))[:count]
     if len(qs)<count: raise HTTPException(400,'Leitura incompleta do cartão.')
     correct=mult=blank=0;answers=[]
