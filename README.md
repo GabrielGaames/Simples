@@ -93,3 +93,12 @@ The result includes a confidence value per detected answer and a list of low-con
 - Matrícula, presença, percentual e cabeçalho não entram no payload principal.
 - Cópia secundária em grade TSV/HTML para conferência em planilha.
 - Colagem no SIAP continua sendo feita pelo Plugin GPA.
+
+## 10.7 — SIAP/GPA por disciplina no Bloco 06
+
+Na tela SIAP / GPA, o Bloco 06 possui recorte por disciplina:
+- Biologia: Q01–Q15;
+- Sociologia: Q16–Q23;
+- Filosofia: Q24–Q30.
+
+O recorte é renumerado localmente para o lançamento da avaliação correspondente no SIAP.

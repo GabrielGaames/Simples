@@ -71,7 +71,8 @@
       </table>
     </div>
     <div class="guide">
-      <b>Importante:</b> todos os alunos da turma são mantidos, inclusive os que estão sem resultado. O ID/chamada é enviado no atributo <code>data-number</code>, exatamente como o Plugin GPA original coleta no GPA. A matrícula não participa da integração.
+      <b>Importante:</b> todos os alunos da turma são mantidos, inclusive os que estão sem resultado. O ID/chamada é enviado no atributo <code>data-number</code>, exatamente como o Plugin GPA original coleta no GPA. A matrícula não participa da integração.<br>
+      <b>Bloco 06:</b> ao selecionar a disciplina, o ScoreView envia somente o recorte correspondente: <b>Biologia 01–15</b>, <b>Sociologia 16–23</b> ou <b>Filosofia 24–30</b>. No SIAP, esses recortes são renumerados a partir da questão 01.
     </div>
   </div>
 </section>
@@ -137,6 +138,7 @@ const classSelect=document.querySelector('#classSelect'), studentSelect=document
 const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary'), reportExam=document.querySelector('#reportExam'), diagnosticText=document.querySelector('#diagnosticText'), diagnosticQuestions=document.querySelector('#diagnosticQuestions'), exportClassPdf=document.querySelector('#exportClassPdf');
 const siapClass=document.querySelector('#siapClass'), siapExam=document.querySelector('#siapExam'), siapDiscipline=document.querySelector('#siapDiscipline'), siapBimestre=document.querySelector('#siapBimestre'), prepareSiap=document.querySelector('#prepareSiap'), copySiap=document.querySelector('#copySiap'), copySiapGrid=document.querySelector('#copySiapGrid'), siapStatus=document.querySelector('#siapStatus'), siapResultCard=document.querySelector('#siapResultCard'), siapSummary=document.querySelector('#siapSummary'), siapHead=document.querySelector('#siapHead'), siapBody=document.querySelector('#siapBody'), pluginGpaCompatBody=document.querySelector('#pluginGpaCompatBody');
 let lastSiapData=null;
+let lastSiapViewData=null;
 
 const KEY_STORAGE_PREFIX='eduscanner_gabarito_';
 const COUNT_STORAGE='eduscanner_quantidade_questoes';
@@ -454,6 +456,70 @@ function normalizePluginName(value){
   return String(value??'').replace(/\s+/g,' ').trim();
 }
 
+// Recortes oficiais do Bloco 06 para lançamento de cada disciplina no SIAP.
+// As questões do cartão são globais (1–30), mas cada avaliação do SIAP deve
+// receber somente as questões pertencentes à disciplina selecionada,
+// renumeradas localmente a partir de 1.
+const SIAP_DISCIPLINE_RANGES = {
+  biologia: {start:1, end:15},
+  sociologia: {start:16, end:23},
+  filosofia: {start:24, end:30},
+};
+
+function normalizeDiscipline(value){
+  return String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+}
+
+function isBlock6(examName){
+  return /\bbloco\s*0?6\b/i.test(String(examName??''));
+}
+
+function getSiapDisciplineRange(examName, discipline){
+  if(!discipline || !isBlock6(examName)) return null;
+  return SIAP_DISCIPLINE_RANGES[normalizeDiscipline(discipline)] || null;
+}
+
+function projectSiapDataByDiscipline(sourceData){
+  const discipline=siapDiscipline?.value||'';
+  const range=getSiapDisciplineRange(sourceData?.prova, discipline);
+  if(!range){
+    return {...sourceData, _siapRecorte:null};
+  }
+
+  const qCount=range.end-range.start+1;
+  const resultados=(sourceData.resultados||[]).map(x=>{
+    const globalHits=[...(x.acertos_questoes||[])].map(Number).filter(Number.isInteger);
+    const localHits=globalHits
+      .filter(q=>q>=range.start && q<=range.end)
+      .map(q=>q-range.start+1);
+    const localAcertos=x.tem_resultado?localHits.length:0;
+    return {
+      ...x,
+      quantidade_questoes:qCount,
+      acertos_questoes:localHits,
+      acertos:localAcertos,
+      percentual:x.tem_resultado ? roundPercent(localAcertos,qCount) : null,
+      _questoesOriginais: [range.start, range.end]
+    };
+  });
+
+  return {
+    ...sourceData,
+    quantidade_questoes:qCount,
+    resultados,
+    _siapRecorte:{
+      disciplina:discipline,
+      inicio:range.start,
+      fim:range.end,
+      quantidade:qCount
+    }
+  };
+}
+
+function roundPercent(value,total){
+  return total ? Math.round((value/total)*10000)/100 : null;
+}
+
 function buildSiapPluginClipboard(data){
   // Formato principal para o Plugin GPA: uma linha por aluno, usando o nome
   // como chave e apenas os números das questões acertadas. Todos os alunos
@@ -563,9 +629,11 @@ function escapeHtml(value){
 
 function renderSiap(data){
   lastSiapData=data;
-  renderPluginGpaCompat(data);
-  const qCount=Number(data.quantidade_questoes||0);
-  const validation=data.validacao||{ok:true,ids_ausentes:[],ids_duplicados:[]};
+  const viewData=projectSiapDataByDiscipline(data);
+  lastSiapViewData=viewData;
+  renderPluginGpaCompat(viewData);
+  const qCount=Number(viewData.quantidade_questoes||0);
+  const validation=viewData.validacao||{ok:true,ids_ausentes:[],ids_duplicados:[]};
   if(!qCount){
     siapHead.innerHTML='';
     siapBody.innerHTML='<tr><td>Nenhum resultado salvo para esta prova.</td></tr>';
@@ -575,7 +643,7 @@ function renderSiap(data){
   }
   const qHeaders=Array.from({length:qCount},(_,i)=>`<th>${i+1}</th>`).join('');
   siapHead.innerHTML=`<tr><th rowspan="2">Aluno</th><th colspan="2">1ª Chamada</th><th colspan="2">2ª Chamada</th><th colspan="${qCount}">Acertos por questão</th><th rowspan="2">Qtde<br>Acertos</th><th rowspan="2">%<br>Acertos</th></tr><tr><th>Pres.</th><th>Aus.</th><th>Pres.</th><th>Aus.</th>${qHeaders}</tr>`;
-  siapBody.innerHTML=(data.resultados||[]).map(x=>{
+  siapBody.innerHTML=(viewData.resultados||[]).map(x=>{
     const hits=new Set(x.acertos_questoes||[]);
     const attendance=(v)=>`<input class="siapCheck" type="checkbox" ${v?'checked':''} tabindex="-1" aria-label="${v?'marcado':'não marcado'}">`;
     const qCells=Array.from({length:qCount},(_,i)=>`<td>${x.tem_resultado?attendance(hits.has(i+1)):'<span class="siapEmpty">—</span>'}</td>`).join('');
@@ -593,6 +661,7 @@ function renderSiap(data){
     siapStatus.textContent=`⚠ ${warningParts.join(' · ')}. Corrija o cadastro antes de copiar para o GPA.`;
     siapStatus.style.display='block';
   }
+  const rangeInfo=viewData._siapRecorte;
   siapSummary.innerHTML=[
     `Alunos: ${s.alunos||0}`,
     `Com resultado: ${s.com_resultado||0}`,
@@ -600,7 +669,7 @@ function renderSiap(data){
     `Ausentes 1ª: ${s.ausentes_1||0}`,
     `Presentes 2ª: ${s.presentes_2||0}`,
     `Ausentes 2ª: ${s.ausentes_2||0}`,
-    `Questões: ${qCount}`,
+    rangeInfo ? `${rangeInfo.disciplina}: Q${String(rangeInfo.inicio).padStart(2,'0')}–Q${String(rangeInfo.fim).padStart(2,'0')} → ${qCount} questões` : `Questões: ${qCount}`,
     'Ordem: ID / chamada'
   ].map(t=>`<span class="pill">${t}</span>`).join('');
   siapResultCard.style.display='block';
@@ -616,8 +685,11 @@ async function prepareSiapData(){
     const d=await r.json(); if(!r.ok)throw new Error(d.detail||'Não foi possível preparar o lançamento.');
     renderSiap(d);
     if(d.validacao?.ok!==false){
+      const range=getSiapDisciplineRange(d.prova,siapDiscipline.value);
       siapStatus.className='status ok';
-      siapStatus.textContent=`Dados preparados para ${d.turma.nome} · ${d.prova}. ${d.resumo?.alunos||0} alunos serão mantidos na cópia, inclusive os sem resultado. O formato principal usa nome + questões acertadas.`;
+      siapStatus.textContent=range
+        ? `Dados preparados para ${d.turma.nome} · ${d.prova}. ${siapDiscipline.value}: questões ${String(range.start).padStart(2,'0')}–${String(range.end).padStart(2,'0')} (${range.end-range.start+1} questões).`
+        : `Dados preparados para ${d.turma.nome} · ${d.prova}. ${d.resumo?.alunos||0} alunos serão mantidos na cópia, inclusive os sem resultado.`;
       siapStatus.style.display='block';
     }
   }catch(e){
@@ -626,25 +698,40 @@ async function prepareSiapData(){
 }
 
 prepareSiap.addEventListener('click',prepareSiapData);
-siapClass.addEventListener('change',async()=>{await loadSiapExams();siapResultCard.style.display='none';lastSiapData=null;copySiap.disabled=true;copySiapGrid.disabled=true;});
-siapExam.addEventListener('change',()=>{siapResultCard.style.display='none';lastSiapData=null;copySiap.disabled=true;copySiapGrid.disabled=true;});
+siapClass.addEventListener('change',async()=>{await loadSiapExams();siapResultCard.style.display='none';lastSiapData=null;lastSiapViewData=null;copySiap.disabled=true;copySiapGrid.disabled=true;});
+siapExam.addEventListener('change',()=>{siapResultCard.style.display='none';lastSiapData=null;lastSiapViewData=null;copySiap.disabled=true;copySiapGrid.disabled=true;});
+siapDiscipline.addEventListener('change',()=>{
+  if(lastSiapData){
+    renderSiap(lastSiapData);
+    const range=getSiapDisciplineRange(lastSiapData.prova,siapDiscipline.value);
+    siapStatus.className=range?'status ok':'status';
+    siapStatus.textContent=range
+      ? `✓ ${siapDiscipline.value}: serão enviadas somente as questões ${String(range.start).padStart(2,'0')}–${String(range.end).padStart(2,'0')} (${range.end-range.start+1} questões).`
+      : (siapDiscipline.value ? 'ℹ Este bloco ainda não possui um recorte específico configurado; todas as questões salvas serão exibidas.' : 'Selecione uma disciplina para aplicar um recorte de questões.');
+    siapStatus.style.display='block';
+  }
+});
 
 copySiap.addEventListener('click',async()=>{
   if(!lastSiapData || lastSiapData.validacao?.ok===false)return;
-  renderPluginGpaCompat(lastSiapData);
+  const viewData=projectSiapDataByDiscipline(lastSiapData);
+  lastSiapViewData=viewData;
+  renderPluginGpaCompat(viewData);
   siapStatus.className='status ok';
-  siapStatus.innerHTML=`✓ Página preparada para o PLUGIN GPA com <b>${lastSiapData.resultados?.length||0} alunos</b>. Agora clique com o botão direito nesta página → <b>PLUGIN GPA → Copiar (GPA)</b>. Depois abra o SIAP e use <b>PLUGIN GPA → Colar (SIAP)</b>.`;
+  siapStatus.innerHTML=`✓ Página preparada para o PLUGIN GPA com <b>${viewData.resultados?.length||0} alunos</b>. Agora clique com o botão direito nesta página → <b>PLUGIN GPA → Copiar (GPA)</b>. Depois abra o SIAP e use <b>PLUGIN GPA → Colar (SIAP)</b>.`;
   siapStatus.style.display='block';
 });
 
 copySiapGrid.addEventListener('click',async()=>{
   if(!lastSiapData || lastSiapData.validacao?.ok===false)return;
   try{
-    const gridText=buildSiapGridClipboard(lastSiapData,{includeHeader:true});
-    const html=buildSiapGridHtml(lastSiapData);
+    const viewData=projectSiapDataByDiscipline(lastSiapData);
+    lastSiapViewData=viewData;
+    const gridText=buildSiapGridClipboard(viewData,{includeHeader:true});
+    const html=buildSiapGridHtml(viewData);
     await copyTextToClipboard(gridText,html,gridText);
     siapStatus.className='status ok';
-    siapStatus.textContent=`✓ Grade completa com ${lastSiapData.resultados?.length||0} alunos copiada. Esta opção é para colar em planilha/conferência; para o Plugin GPA, use o botão principal.`;
+    siapStatus.textContent=`✓ Grade completa com ${viewData.resultados?.length||0} alunos copiada. Esta opção é para colar em planilha/conferência; para o Plugin GPA, use o botão principal.`;
     siapStatus.style.display='block';
   }catch(e){
     siapStatus.className='status error';
