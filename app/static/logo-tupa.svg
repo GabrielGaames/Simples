@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<title id="title">Logo TUPÃ</title><desc id="desc">Ícone azul de educação com livro aberto e capelo.</desc>
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#0b4fa3"/>
+    <stop offset="0.55" stop-color="#1683ff"/>
+    <stop offset="1" stop-color="#35c5ff"/>
+  </linearGradient>
+  <filter id="s" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#0b4fa3" flood-opacity="0.18"/>
+  </filter>
+</defs>
+<circle cx="256" cy="256" r="232" fill="#eff7ff" stroke="#cfe4ff" stroke-width="8"/>
+<g filter="url(#s)">
+  <!-- cap -->
+  <path d="M142 151 256 92l114 59-114 58-114-58Z" fill="url(#g)"/>
+  <path d="M171 166v40c34 22 61 31 85 31s51-9 85-31v-40l-85 43-85-43Z" fill="#0a5fc2"/>
+  <path d="M370 152v76" stroke="#1683ff" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="370" cy="239" r="13" fill="#1683ff"/>
+  <!-- book -->
+  <path d="M92 277c48-16 101-12 164 18v124c-58-28-110-34-164-15V277Z" fill="#fff" stroke="#0b4fa3" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M420 277c-48-16-101-12-164 18v124c58-28 110-34 164-15V277Z" fill="#fff" stroke="#0b4fa3" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M256 295v124" stroke="#1683ff" stroke-width="10" stroke-linecap="round"/>
+  <path d="M120 307c35-9 70-6 107 10M120 339c35-9 70-6 107 10M392 307c-35-9-70-6-107 10M392 339c-35-9-70-6-107 10" fill="none" stroke="#8fcaff" stroke-width="8" stroke-linecap="round"/>
+</g>
+</svg>

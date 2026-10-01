@@ -1,6 +1,6 @@
 
 const viewTitles={home:'Visão geral',scanner:'Corrigir prova',reports:'Relatórios',siap:'SIAP / GPA',students:'Alunos e turmas',users:'Professores'};
-function openView(name){document.querySelectorAll('[data-view-panel]').forEach(x=>x.classList.toggle('active',x.dataset.viewPanel===name));document.querySelectorAll('.navBtn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const t=document.querySelector('#topTitle');if(t)t.textContent=viewTitles[name]||'ScoreView';document.querySelector('#sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+function openView(name){document.querySelectorAll('[data-view-panel]').forEach(x=>x.classList.toggle('active',x.dataset.viewPanel===name));document.querySelectorAll('.navBtn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const t=document.querySelector('#topTitle');if(t)t.textContent=viewTitles[name]||'TUPÃ';document.querySelector('#sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('.navBtn').forEach(b=>b.addEventListener('click',()=>openView(b.dataset.view)));
 document.querySelectorAll('.quickNav').forEach(b=>b.addEventListener('click',()=>openView(b.dataset.target)));
 document.querySelector('#menuToggle')?.addEventListener('click',()=>document.querySelector('#sidebar')?.classList.toggle('open'));

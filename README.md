@@ -1,4 +1,4 @@
-# ScoreView 10.8
+# TUPÃ 10.11
 
 Versão atual do EduScanner com scanner de 45 questões, turmas, alunos, resultados e relatórios.
 
