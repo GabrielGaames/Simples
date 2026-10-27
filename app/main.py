@@ -235,7 +235,7 @@ def _pdf_resultado(r: Resultado, turma: Turma) -> BytesIO:
         ['Turma', turma.nome], ['Status', r.aluno.status or 'ATIVO'], ['Prova / bloco', r.prova_nome],
         ['1ª chamada', 'PRESENTE' if r.presente_1 else ('AUSENTE' if r.ausente_1 else 'NÃO INFORMADO')],
         ['2ª chamada', 'PRESENTE' if r.presente_2 else ('AUSENTE' if r.ausente_2 else 'NÃO INFORMADO')],
-        ['Acertos', str(r.acertos)], ['Erros', str(r.erros)], ['Anuladas', str(r.anuladas)], ['Em branco', str(r.em_branco)],
+        ['Acertos', str(r.acertos)], ['Erros', str(r.erros)], ['Múltiplas marcações', str(r.anuladas)], ['Anuladas pelo professor', str((r.gabarito or '').split(',').count('X'))], ['Em branco', str(r.em_branco)],
         ['Nota', f'{r.nota:.2f}'.replace('.', ',')], ['Data', r.criado_em.strftime('%d/%m/%Y %H:%M') if r.criado_em else '—'],
     ]
     table = Table(info, colWidths=[42*mm, 135*mm])
@@ -249,7 +249,9 @@ def _pdf_resultado(r: Resultado, turma: Turma) -> BytesIO:
     for i in range(r.quantidade_questoes):
         ans = respostas[i].strip().upper() if i < len(respostas) and respostas[i].strip() else ''
         key = gabarito[i].strip().upper() if i < len(gabarito) and gabarito[i].strip() else ''
-        if ans and ans != 'MULT' and key and ans == key:
+        if key == 'X':
+            qrows.append([str(i+1), 'ANULADA (ACERTO)'])
+        elif ans and ans != 'MULT' and key and ans == key:
             qrows.append([str(i+1), ans])
     if len(qrows) == 1:
         qrows.append(['—', 'Nenhuma questão acertada'])
@@ -331,6 +333,9 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
         return {'id':result.id,'acertos':0,'erros':0,'anuladas':0,'em_branco':0,'nota':0,'ausente_sem_foto':True}
 
     if len(payload.gabarito)!=count: raise HTTPException(400,'Quantidade/gabarito inválido.')
+    payload.gabarito = [str(a).strip().upper() for a in payload.gabarito]
+    if any(a not in ('A','B','C','D','E','X') for a in payload.gabarito):
+        raise HTTPException(400,'O gabarito aceita apenas A, B, C, D, E ou X (questão anulada).')
     qs=sorted(payload.questions,key=lambda q:int(q.get('number',0)))[:count]
     if len(qs)<count: raise HTTPException(400,'Leitura incompleta do cartão.')
     correct=mult=blank=0;answers=[]
@@ -338,7 +343,7 @@ def salvar_resultado(payload:ResultadoIn,db:Session=Depends(get_db),user:Usuario
         status=q.get('status');answer=q.get('answer') if status=='OK' else None;answers.append(answer or ('MULT' if status=='MULT' else ''))
         if status=='MULT':mult+=1
         elif status=='BLANK':blank+=1
-        if status=='OK' and answer==payload.gabarito[i]:correct+=1
+        if payload.gabarito[i]=='X' or (status=='OK' and answer==payload.gabarito[i]):correct+=1
     wrong=count-correct
     nota=round(correct/count*10,2)
     result=Resultado(aluno_id=aluno.id,prova_nome=payload.prova_nome.strip() or 'Prova',quantidade_questoes=count,gabarito=','.join(payload.gabarito),respostas=','.join(answers),acertos=correct,erros=wrong,anuladas=mult,em_branco=blank,nota=nota,presente_1=payload.presente_1,ausente_1=payload.ausente_1,presente_2=payload.presente_2,ausente_2=payload.ausente_2)
@@ -387,7 +392,8 @@ def _diagnostico_turma(resultados):
                 rs=(r.respostas or '').split(','); gs=(r.gabarito or '').split(',')
                 ans=rs[i].strip().upper() if i<len(rs) else ''; key=gs[i].strip().upper() if i<len(gs) else ''
                 attempted+=1
-                if ans=='MULT': multi+=1
+                if key=='X': correct+=1
+                elif ans=='MULT': multi+=1
                 elif not ans: blank+=1
                 elif key and ans==key: correct+=1
             if attempted:
@@ -428,14 +434,14 @@ def _pdf_relatorio_turma(turma, resultados, diagnostico, prova_nome=None, db=Non
             ans = answers[i].strip().upper() if i < r.quantidade_questoes and i < len(answers) and answers[i].strip() else ''
             key = keys[i].strip().upper() if i < r.quantidade_questoes and i < len(keys) and keys[i].strip() else ''
             # No relatório da turma, cada Qn só recebe a resposta quando ela foi acertada.
-            qcells.append(ans if ans and ans != 'MULT' and key and ans == key else '')
+            qcells.append('X' if key == 'X' else (ans if ans and ans != 'MULT' and key and ans == key else ''))
         rows.append([aluno.numero_chamada or '—',aluno.matricula,aluno.nome,aluno.status or 'ATIVO','X' if r.presente_1 else '', 'X' if r.ausente_1 else '', 'X' if r.presente_2 else '', 'X' if r.ausente_2 else '']+qcells+[f'{r.nota:.2f}'.replace('.',',')])
     if len(rows)==1:
         rows.append(['—','—','Nenhum resultado','','','','','']+['—']*45+['—'])
     widths=[10*mm,24*mm,42*mm,19*mm,12*mm,12*mm,12*mm,12*mm]+[5.1*mm]*45+[13*mm]
     rt=Table(rows,colWidths=widths,repeatRows=1,splitByRow=1)
     rt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#263746')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.25,colors.HexColor('#cfd4d8')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTSIZE',(0,0),(-1,-1),4.7),('LEADING',(0,0),(-1,-1),5.2),('PADDING',(0,0),(-1,-1),2),('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
-    story += [Paragraph('Dados da prova',h),rt,Spacer(1,3*mm),Paragraph('Estrutura: ID/chamada · matrícula · nome · status escolar · presença/ausência nas duas chamadas · Q1–Q45 · nota. Nas colunas Q1–Q45 aparece somente a alternativa quando o aluno acertou a questão; erros, brancos e anuladas ficam em branco.',sub)]
+    story += [Paragraph('Dados da prova',h),rt,Spacer(1,3*mm),Paragraph('Estrutura: ID/chamada · matrícula · nome · status escolar · presença/ausência nas duas chamadas · Q1–Q45 · nota. Nas colunas Q1–Q45 aparece somente a alternativa quando o aluno acertou a questão; erros, brancos e múltiplas marcações ficam em branco; questões anuladas pelo professor aparecem como X e valem acerto.',sub)]
     doc.build(story); out.seek(0); return out
 
 
@@ -499,7 +505,7 @@ def _siap_rows(db: Session, turma_id: int, prova_nome: str):
         for i in range(r.quantidade_questoes):
             ans = respostas[i].strip().upper() if i < len(respostas) else ''
             key = gabarito[i].strip().upper() if i < len(gabarito) else ''
-            if ans and ans != 'MULT' and key and ans == key:
+            if key == 'X' or (ans and ans != 'MULT' and key and ans == key):
                 acertos_questoes.append(i + 1)
 
         rows.append({

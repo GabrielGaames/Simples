@@ -57,7 +57,7 @@ const KEY_STORAGE_PREFIX='eduscanner_gabarito_';
 const COUNT_STORAGE='eduscanner_quantidade_questoes';
 
 function parseKey(){
-  return keyBox.value.toUpperCase().replace(/[^A-E]/g,'').split('');
+  return keyBox.value.toUpperCase().replace(/[^A-EX]/g,'').split('');
 }
 
 function selectedCount(){
@@ -79,7 +79,7 @@ function updateKeyState(){
     keyInfo.textContent=`✓ Gabarito válido: ${count}/${count} respostas. As questões ${count+1}–45 serão ignoradas.`;
   } else {
     keyInfo.className='status error';
-    keyInfo.textContent=`Gabarito incompleto: ${key.length}/${count} respostas. Informe exatamente ${count} alternativas (A–E).`;
+    keyInfo.textContent=`Gabarito incompleto: ${key.length}/${count} respostas. Informe exatamente ${count} alternativas (A–E ou X para questão anulada).`;
   }
   scanBtn.disabled=!file || key.length!==count;
   if(lastResult && key.length===count) render(lastResult);
@@ -136,14 +136,14 @@ function render(data){
     if(q.status==='MULT'){el.classList.add('mult'); mult++;}
     if(q.status==='BLANK'){el.classList.add('blank'); blank++;}
 
-    const isCorrect=q.status==='OK' && q.answer===expected;
+    const isCorrect=expected==='X' || (q.status==='OK' && q.answer===expected);
     if(isCorrect){ correct++; el.classList.add('correct'); }
     else { wrong++; el.classList.add('wrong'); }
 
     const low=Array.isArray(data.low_confidence_questions) && data.low_confidence_questions.includes(q.number);
     if(low){el.classList.add('lowconf'); lowQuestions.push(q.number);}
 
-    const detail=isCorrect ? '✓ CERTA' : `✗ ERRADA · correta: ${expected}`;
+    const detail=expected==='X' ? '✓ QUESTÃO ANULADA PELO PROFESSOR — PONTO GARANTIDO' : (isCorrect ? '✓ CERTA' : `✗ ERRADA · correta: ${expected}`);
     const conf=(q.confidence!=null && q.status==='OK') ? `<small style="display:block;margin-top:3px;opacity:.75">Confiança: ${Math.round(q.confidence*100)}%</small>` : '';
     const reviewTag=Object.prototype.hasOwnProperty.call(reviewSelections,q.number) ? `<small style="display:block;margin-top:3px;color:#16733a;font-weight:800">✓ Revisada manualmente</small>` : '';
     el.innerHTML=`<b>Questão ${q.number}</b><span class="ans">${label}</span><small style="display:block;margin-top:4px;font-weight:700">${detail}</small>${conf}${reviewTag}`;
@@ -191,7 +191,7 @@ function render(data){
   }
 
   summary.innerHTML='';
-  [`Acertos: ${correct}`,`Erros: ${wrong}`,`Anuladas: ${mult}`,`Em branco: ${blank}`,`Nota: ${(correct/count*10).toFixed(1)}`].forEach(t=>{
+  [`Acertos: ${correct}`,`Erros: ${wrong}`,`Anuladas pelo professor: ${key.filter(x=>x==='X').length}`,`Múltiplas marcações: ${mult}`, `Em branco: ${blank}`,`Nota: ${(correct/count*10).toFixed(1)}`].forEach(t=>{
     const p=document.createElement('span'); p.className='pill'; p.textContent=t; summary.appendChild(p);
   });
   resultCard.style.display='block';
@@ -383,7 +383,7 @@ saveResultBtn.addEventListener('click',async()=>{
   const key=parseKey(), count=selectedCount();
   if(!examName.value){saveStatus.textContent='Selecione o bloco da prova antes de salvar.';saveStatus.className='status error';return;}
   if(!absenceOnly && key.length!==count){saveStatus.textContent=`Informe o gabarito completo antes de salvar (${key.length}/${count}).`;saveStatus.className='status error';saveStatus.style.display='block';return;}
-  const body={aluno_id:Number(studentSelect.value),prova_nome:examName.value,quantidade_questoes:count,gabarito:absenceOnly?(key.length===count?key:Array(count).fill('')):key,questions:absenceOnly?[],presente_1:attendance1.value==='present',ausente_1:attendance1.value==='absent',presente_2:attendance2.value==='present',ausente_2:attendance2.value==='absent'};
+  const body={aluno_id:Number(studentSelect.value),prova_nome:examName.value,quantidade_questoes:count,gabarito:absenceOnly?(key.length===count?key:Array(count).fill('')):key,questions:absenceOnly?[]:lastResult.questions,presente_1:attendance1.value==='present',ausente_1:attendance1.value==='absent',presente_2:attendance2.value==='present',ausente_2:attendance2.value==='absent'};
   saveResultBtn.disabled=true; saveResultBtn.textContent='Salvando...';
   try{
     const r=await apiFetch('/api/resultados',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
