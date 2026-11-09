@@ -48,7 +48,7 @@
 <div id="appScreen" style="display:none"><div class="shell"><aside class="sidebar" id="sidebar"><div class="mobile-menu"><div class="brand"><div class="brand-logos"><img class="school-logo" src="/static/logo-escola.png" alt="Logo CEPI-JBR"><img class="senai-logo" src="/static/logo-senai.png" alt="Logo SENAI"></div><div><h1>TUPÃ</h1></div></div><button id="menuToggle" type="button">☰ Menu</button></div><div class="brand"><div class="brand-logos"><img class="school-logo" src="/static/logo-escola.png" alt="Logo CEPI João Barbosa Reis"><img class="senai-logo" src="/static/logo-senai.png" alt="Logo SENAI"></div><div><h1>TUPÃ</h1><p>CEPI João Barbosa Reis · SENAI</p></div></div><nav class="nav"><button class="navBtn active" data-view="home">⌂ &nbsp;Início</button><button class="navBtn" data-view="scanner">▣ &nbsp;Corrigir prova</button><button class="navBtn" data-view="reports">▥ &nbsp;Relatórios</button><button class="navBtn" data-view="siap">⇄ &nbsp;Lançador Web</button><button class="navBtn adminNav" data-view="students">♙ &nbsp;Alunos e turmas</button><button class="navBtn adminNav" data-view="users">♟ &nbsp;Professores</button></nav><div class="side-user"><b id="currentUserName">Usuário</b><div class="muted" id="currentUserType"></div><button id="logoutBtn" class="btn secondary">Sair</button></div></aside><main class="main"><header class="topbar"><div><h2 id="topTitle">Visão geral</h2><p class="muted">Sistema de correção e gestão de resultados</p></div><span class="pill">CEPI-JBR · SENAI</span></header><div class="content">
 <section class="view active" data-view-panel="home"><div class="page-head"><div><h1>Visão geral</h1><p class="muted">Acesso rápido às principais funções do TUPÃ.</p></div></div><div class="kpis"><div class="kpi"><span>Fluxo</span><strong>1 → 2 → 3</strong><div class="muted">Turma, aluno e correção</div></div><div class="kpi"><span>Cartão</span><strong>45</strong><div class="muted">Leitura padrão do scanner</div></div><div class="kpi"><span>Provas</span><strong>20 / 30 / 45</strong><div class="muted">Questões consideradas</div></div></div><div class="grid2"><div class="card"><h2>Corrigir uma prova</h2><p class="muted">Selecione turma e aluno, fotografe o cartão e salve a nota.</p><button class="btn quickNav" data-target="scanner">Abrir correção</button></div><div class="card"><h2>Consultar resultados</h2><p class="muted">Veja notas salvas, gere PDFs ou exclua um lançamento.</p><button class="btn secondary quickNav" data-target="reports">Abrir relatórios</button></div></div></section>
 <section class="view" data-view-panel="scanner"><div class="page-head"><div><h1>Corrigir prova</h1><p class="muted">Identifique o aluno, configure o gabarito e fotografe o cartão.</p></div></div><div class="grid2"><div class="card"><h2>1. Identificação</h2><div class="field"><label for="examName">Prova / bloco</label><select id="examName" required><option value="" selected>Selecione o bloco...</option><option value="Bloco 01">Bloco 01</option><option value="Bloco 02">Bloco 02</option><option value="Bloco 03">Bloco 03</option><option value="Bloco 04">Bloco 04</option><option value="Bloco 05">Bloco 05</option><option value="Bloco 06">Bloco 06</option><option value="Bloco 07 - Simulado">Bloco 07 - Simulado</option><option value="Bloco 08 - Simulado">Bloco 08 - Simulado</option></select></div><div class="row"><div class="field"><label for="classSelect">Turma</label><select id="classSelect"><option value="">Selecione...</option></select></div><div class="field"><label for="studentSelect">Aluno</label><select id="studentSelect" disabled><option value="">Selecione a turma...</option></select></div></div><div class="row"><div class="field"><label for="attendance1">1ª chamada</label><select id="attendance1"><option value="">Não informado</option><option value="present">Presente</option><option value="absent">Ausente</option></select></div><div class="field"><label for="attendance2">2ª chamada</label><select id="attendance2"><option value="">Não informado</option><option value="present">Presente</option><option value="absent">Ausente</option></select></div></div><div class="guide">Essas informações serão gravadas no relatório e aparecerão nas colunas de frequência.</div></div><div class="card"><h2>2. Configuração</h2><div class="field"><label for="questionCount">Quantidade de questões</label><select id="questionCount"><option value="20">20 questões</option><option value="30">30 questões</option><option value="45" selected>45 questões</option></select></div><div class="field"><label for="key">Gabarito oficial</label><textarea id="key" placeholder="Ex.: D,A,A,A,B,..."></textarea><div class="guide" style="margin-top:8px"><b>Questão anulada pelo professor:</b> informe <b>X</b> na posição correspondente do gabarito. A questão valerá como correta para todos os alunos, mesmo em branco ou com múltiplas marcações. Ex.: A,B,<b>X</b>,D,E.</div></div><div id="keyInfo" class="status" style="display:block;background:#f3f4f6;color:#374151">Gabarito: 0 respostas.</div></div></div><div class="card scanner-focus"><h2>3. Scanner</h2><p class="muted">Folha plana, foto de cima e cartão ocupando boa parte da imagem.</p><div class="guide"><b>Dica:</b> pode usar caneta vermelha, azul ou preta. Evite inclinação forte e sombras intensas.</div><label class="btn" for="photo">📷 Tirar foto do cartão</label><input id="photo" type="file" accept="image/*" capture="environment"><img id="preview" alt="Prévia"><button id="scan" class="btn" disabled style="width:100%;margin-top:10px">Ler e corrigir respostas</button><div id="status" class="status"></div></div><div id="resultCard" class="card" style="display:none"><h2>Resultado da correção</h2><div id="summary" class="summary"></div><div id="questions" class="questions"></div><div id="reviewBox" class="reviewBox"></div><button id="confirmReview" class="btn secondary" style="display:none;width:100%;margin-top:8px">✓ Confirmar revisão e liberar salvamento</button><button id="saveResult" class="btn" disabled style="width:100%;margin-top:14px">💾 Salvar resultado do aluno</button><div id="absenceSaveNotice" class="absenceSave"><strong>📝 Registro de ausência</strong>O aluno está marcado como ausente. Você pode salvar o relatório sem tirar foto do cartão. Nesse modo, nenhuma questão é lançada e a nota fica como 0 até que exista um resultado de prova.</div><button id="exportSavedPdf" class="btn secondary" style="display:none;width:100%;margin-top:8px">📄 Exportar PDF deste resultado</button><div id="saveStatus" class="status"></div></div></section>
-<section class="view" data-view-panel="reports"><div class="power-hero"><div><span class="power-overline">TUPÃ • Inteligência educacional</span><h1>Painel de desempenho</h1><p>Indicadores e análises dos resultados das avaliações da turma.</p></div><span class="power-pill" id="powerContext">Aguardando seleção da turma</span></div><div class="card"><div class="row"><div class="field"><label>Turma</label><p class="muted">Selecione a turma para visualizar somente os resultados dela.</p></div><div class="field"><label>Prova / bloco</label><select id="reportExam"><option value="">Todas as provas</option></select></div></div><div class="reportActions"><button id="loadReport" class="btn secondary">🔄 Atualizar relatório</button><button id="exportClassPdf" class="btn">📄 PDF da turma</button></div><div id="reportSummary" class="summary"></div></div><div class="power-kpis" id="powerKpis" aria-live="polite"><div class="power-kpi"><span>Alunos avaliados</span><strong>—</strong><small>Com resultado registrado</small></div><div class="power-kpi"><span>Média da turma</span><strong>—</strong><small>Nota média</small></div><div class="power-kpi"><span>Aproveitamento</span><strong>—</strong><small>Percentual médio de acertos</small></div><div class="power-kpi"><span>Provas corrigidas</span><strong>—</strong><small>Resultados registrados</small></div></div>
+<section class="view" data-view-panel="reports"><div class="power-hero"><div><span class="power-overline">TUPÃ • Inteligência educacional</span><h1>Painel de desempenho</h1><p>Indicadores e análises dos resultados das avaliações da turma.</p></div><span class="power-pill" id="powerContext">Aguardando seleção da turma</span></div><div class="card"><div class="row"><div class="field"><label for="reportClass">Turma</label><select id="reportClass"><option value="">Selecione a turma...</option></select><p class="muted" style="margin:7px 0 0;font-size:12px">Escolha a turma diretamente aqui, sem precisar abrir a correção.</p></div><div class="field"><label for="reportExam">Prova / bloco</label><select id="reportExam"><option value="">Todas as provas</option></select></div></div><div class="reportActions"><button id="loadReport" class="btn secondary">🔄 Atualizar relatório</button><button id="exportClassPdf" class="btn">📄 PDF da turma</button></div><div id="reportSummary" class="summary"></div></div><div class="power-kpis" id="powerKpis" aria-live="polite"><div class="power-kpi"><span>Alunos avaliados</span><strong>—</strong><small>Com resultado registrado</small></div><div class="power-kpi"><span>Média da turma</span><strong>—</strong><small>Nota média</small></div><div class="power-kpi"><span>Aproveitamento</span><strong>—</strong><small>Percentual médio de acertos</small></div><div class="power-kpi"><span>Provas corrigidas</span><strong>—</strong><small>Resultados registrados</small></div></div>
 <div class="power-panels" id="powerPanels"><div class="power-panel"><h3>Distribuição do aproveitamento</h3><p class="power-desc">Quantidade de resultados em cada faixa</p><div id="powerDistribution" class="power-empty">Selecione uma turma para visualizar os gráficos.</div></div><div class="power-panel"><h3>Desempenho por prova</h3><p class="power-desc">Média de nota em cada avaliação registrada</p><div id="powerByExam" class="power-empty">Selecione uma turma para visualizar os gráficos.</div></div><div class="power-panel"><h3>Destaques da turma</h3><p class="power-desc">Maiores notas registradas no filtro atual</p><div id="powerTopStudents" class="power-empty">Sem resultados disponíveis.</div></div><div class="power-panel"><h3>Questões que merecem atenção</h3><p class="power-desc">Menor aproveitamento por questão, quando uma prova é selecionada</p><div id="powerWeakQuestions" class="power-empty">Selecione uma única prova para analisar questões.</div></div></div>
 <div class="card"><h2>Diagnóstico pedagógico</h2><p class="muted">Texto de apoio gerado a partir dos resultados da turma.</p><div id="powerDiagnosticNote" class="guide">Os indicadores serão exibidos após selecionar uma turma.</div></div>
 <div class="card"><h2>Diagnóstico geral da turma</h2><p class="muted">Resumo automático para ajudar o professor a planejar o feedback coletivo. Quando uma única prova é selecionada, o sistema também mostra o desempenho por questão.</p><div id="diagnosticText" class="guide">Selecione uma turma e atualize o relatório.</div><div id="diagnosticQuestions"></div></div><div class="card"><h2>Resultados dos alunos</h2><div class="power-table-tools"><input id="powerStudentSearch" type="search" placeholder="Buscar aluno ou matrícula..." aria-label="Buscar aluno ou matrícula"><small id="powerRowsCount">Selecione uma turma</small></div><div class="tableWrap"><table><thead><tr><th>ID</th><th>Aluno</th><th>Matrícula</th><th>Status</th><th>1ª</th><th>2ª</th><th>Prova</th><th>Acertos</th><th>Erros</th><th>Anuladas</th><th>Em branco</th><th>Nota</th><th>Ações</th></tr></thead><tbody id="reportBody"></tbody></table></div></div></section>
@@ -162,29 +162,32 @@ async function apiFetch(url,opts={}){
 }
 async function refreshData({students=true,report=true}={}){
   const selectedClass=classSelect.value;
+  const selectedReportClass=reportClass.value;
   const selectedStudent=studentSelect.value;
   const selectedExam=reportExam.value;
   await loadClasses();
+  await loadReportClasses();
   await loadSiapClasses();
   if(currentUser?.tipo==='admin'){await loadAdminClasses();await loadUsers();}
   if(selectedClass && [...classSelect.options].some(o=>o.value===selectedClass)){
     classSelect.value=selectedClass;
     if(students){await loadStudents(); if(selectedStudent && [...studentSelect.options].some(o=>o.value===selectedStudent)) studentSelect.value=selectedStudent;}
-    if(report){
-      await loadReportExams();
-      if(selectedExam && [...reportExam.options].some(o=>o.value===selectedExam)) reportExam.value=selectedExam;
-      await showReport();
-    }
-  }else if(report){
-    reportExam.innerHTML='<option value="">Todas as provas</option>';
-    if(students){studentSelect.innerHTML='<option value="">Selecione a turma...</option>';studentSelect.disabled=true;}
-    reportBody.innerHTML='';reportSummary.innerHTML='';diagnosticText.textContent='Selecione uma turma e atualize o relatório.';diagnosticQuestions.innerHTML='';powerCurrentRows=[];resetPowerDashboard();
+  } else if(students){
+    classSelect.value='';
+    studentSelect.innerHTML='<option value="">Selecione a turma...</option>';
+    studentSelect.disabled=true;
+  }
+  if(report){
+    if(selectedReportClass && [...reportClass.options].some(o=>o.value===selectedReportClass)) reportClass.value=selectedReportClass;
+    await loadReportExams();
+    if(selectedReportClass===reportClass.value && selectedExam && [...reportExam.options].some(o=>o.value===selectedExam)) reportExam.value=selectedExam;
+    await showReport();
   }
 }
 
 function showLogin(){currentUser=null;appScreen.style.display='none';loginScreen.style.display='block';}
 async function startApp(){
-  try{const r=await fetch('/api/auth/me');if(!r.ok){showLogin();return;}currentUser=await r.json();loginScreen.style.display='none';appScreen.style.display='block';document.querySelector('#currentUserName').textContent=currentUser.nome;document.querySelector('#currentUserType').textContent=currentUser.tipo==='admin'?'Administrador':'Professor';document.querySelector('#adminImportCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelector('#adminUsersCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelectorAll('.adminNav').forEach(x=>x.style.display=currentUser.tipo==='admin'?'block':'none');await loadClasses();await loadSiapClasses();if(currentUser.tipo==='admin'){await loadUsers();await loadAdminClasses();}}catch(e){showLogin();}
+  try{const r=await fetch('/api/auth/me');if(!r.ok){showLogin();return;}currentUser=await r.json();loginScreen.style.display='none';appScreen.style.display='block';document.querySelector('#currentUserName').textContent=currentUser.nome;document.querySelector('#currentUserType').textContent=currentUser.tipo==='admin'?'Administrador':'Professor';document.querySelector('#adminImportCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelector('#adminUsersCard').style.display=currentUser.tipo==='admin'?'block':'none';document.querySelectorAll('.adminNav').forEach(x=>x.style.display=currentUser.tipo==='admin'?'block':'none');await loadClasses();await loadReportClasses();await loadSiapClasses();if(currentUser.tipo==='admin'){await loadUsers();await loadAdminClasses();}}catch(e){showLogin();}
 }
 loginBtn.addEventListener('click',async()=>{loginBtn.disabled=true;try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:document.querySelector('#loginUser').value,senha:document.querySelector('#loginPass').value})});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Falha no login');loginStatus.style.display='none';await startApp();}catch(e){loginStatus.className='status error';loginStatus.textContent=e.message;loginStatus.style.display='block';}finally{loginBtn.disabled=false;}});
 document.querySelector('#loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')loginBtn.click();});
@@ -193,7 +196,7 @@ const photo=document.querySelector('#photo'), preview=document.querySelector('#p
 const resultCard=document.querySelector('#resultCard'), questionsBox=document.querySelector('#questions'), summary=document.querySelector('#summary'), keyBox=document.querySelector('#key'), keyInfo=document.querySelector('#keyInfo'), questionCountBox=document.querySelector('#questionCount'), reviewBox=document.querySelector('#reviewBox'), confirmReview=document.querySelector('#confirmReview');
 let file=null, lastResult=null, reviewConfirmed=false, reviewSelections={};
 const classSelect=document.querySelector('#classSelect'), studentSelect=document.querySelector('#studentSelect'), examName=document.querySelector('#examName'), saveResultBtn=document.querySelector('#saveResult'), saveStatus=document.querySelector('#saveStatus'), attendance1=document.querySelector('#attendance1'), attendance2=document.querySelector('#attendance2'), absenceSaveNotice=document.querySelector('#absenceSaveNotice');
-const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary'), reportExam=document.querySelector('#reportExam'), diagnosticText=document.querySelector('#diagnosticText'), diagnosticQuestions=document.querySelector('#diagnosticQuestions'), exportClassPdf=document.querySelector('#exportClassPdf');
+const studentsFile=document.querySelector('#studentsFile'), importStudents=document.querySelector('#importStudents'), importStatus=document.querySelector('#importStatus'), loadReport=document.querySelector('#loadReport'), reportBody=document.querySelector('#reportBody'), reportSummary=document.querySelector('#reportSummary'), reportExam=document.querySelector('#reportExam'), reportClass=document.querySelector('#reportClass'), diagnosticText=document.querySelector('#diagnosticText'), diagnosticQuestions=document.querySelector('#diagnosticQuestions'), exportClassPdf=document.querySelector('#exportClassPdf');
 const siapClass=document.querySelector('#siapClass'), siapExam=document.querySelector('#siapExam'), siapDiscipline=document.querySelector('#siapDiscipline'), siapBimestre=document.querySelector('#siapBimestre'), prepareSiap=document.querySelector('#prepareSiap'), copySiap=document.querySelector('#copySiap'), copySiapGrid=document.querySelector('#copySiapGrid'), siapStatus=document.querySelector('#siapStatus'), siapResultCard=document.querySelector('#siapResultCard'), siapSummary=document.querySelector('#siapSummary'), siapHead=document.querySelector('#siapHead'), siapBody=document.querySelector('#siapBody'), pluginGpaCompatBody=document.querySelector('#pluginGpaCompatBody');
 let lastSiapData=null;
 let lastSiapViewData=null;
@@ -404,6 +407,20 @@ async function loadClasses(){
   const res=await apiFetch('/api/turmas'); const items=await res.json();
   classSelect.innerHTML='<option value="">Selecione...</option>'+items.map(t=>`<option value="${t.id}">${t.nome} (${t.total_alunos})</option>`).join('');
 }
+async function loadReportClasses(){
+  const selected=reportClass.value;
+  const res=await apiFetch('/api/turmas');
+  if(!res.ok) throw new Error('Não foi possível carregar as turmas do relatório.');
+  const items=await res.json();
+  reportClass.innerHTML='<option value="">Selecione a turma...</option>';
+  items.forEach(t=>{
+    const option=document.createElement('option');
+    option.value=String(t.id);
+    option.textContent=`${t.nome} (${t.total_alunos})`;
+    reportClass.appendChild(option);
+  });
+  if(items.some(t=>String(t.id)===selected)) reportClass.value=selected;
+}
 async function loadAdminClasses(){
   if(!currentUser || currentUser.tipo!=='admin') return;
   const body=document.querySelector('#classesAdminBody');
@@ -555,8 +572,8 @@ saveResultBtn.addEventListener('click',async()=>{
   finally{saveResultBtn.textContent='💾 Salvar resultado do aluno';saveResultBtn.disabled=!studentSelect.value || (!lastResult && !isAbsenceOnlyMode());}
 });
 async function loadReportExams(){
-  if(!classSelect.value){reportExam.innerHTML='<option value="">Todas as provas</option>';return;}
-  const r=await apiFetch(`/api/turmas/${classSelect.value}/provas`); const provas=await r.json();
+  if(!reportClass.value){reportExam.innerHTML='<option value="">Todas as provas</option>';return;}
+  const r=await apiFetch(`/api/turmas/${reportClass.value}/provas`); const provas=await r.json();
   const current=reportExam.value; reportExam.innerHTML='<option value="">Todas as provas</option>'+provas.map(p=>`<option value="${String(p).replace(/"/g,'&quot;')}">${p}</option>`).join('');
   if(provas.includes(current)) reportExam.value=current;
 }
@@ -611,9 +628,9 @@ function renderPowerDashboard(data){
 }
 document.getElementById('powerStudentSearch').addEventListener('input',powerFilterTable);
 async function showReport(){
-  if(!classSelect.value){powerCurrentRows=[];resetPowerDashboard();reportBody.innerHTML='<tr><td colspan="13">Selecione uma turma.</td></tr>';diagnosticText.textContent='Selecione uma turma e atualize o relatório.';diagnosticQuestions.innerHTML='';return;}
+  if(!reportClass.value){powerCurrentRows=[];resetPowerDashboard();reportBody.innerHTML='<tr><td colspan="13">Selecione uma turma.</td></tr>';diagnosticText.textContent='Selecione uma turma e atualize o relatório.';diagnosticQuestions.innerHTML='';return;}
   const params=reportExam.value?`?prova_nome=${encodeURIComponent(reportExam.value)}`:'';
-  const r=await apiFetch(`/api/turmas/${classSelect.value}/relatorio${params}`); const d=await r.json();
+  const r=await apiFetch(`/api/turmas/${reportClass.value}/relatorio${params}`); const d=await r.json();
   const rows=d.resultados||[]; renderDiagnostic(d.diagnostico);
   reportBody.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.numero_chamada||'—'}</td><td>${x.aluno}</td><td>${x.matricula}</td><td>${x.status||'ATIVO'}</td><td>${x.presente_1?'X':x.ausente_1?'AUSENTE':'—'}</td><td>${x.presente_2?'X':x.ausente_2?'AUSENTE':'—'}</td><td>${x.prova}</td><td>${x.id?`${x.acertos}/${x.questoes}`:'—'}</td><td>${x.id?x.erros:'—'}</td><td>${x.id?x.anuladas:'—'}</td><td>${x.id?x.em_branco:'—'}</td><td>${x.nota==null?'—':Number(x.nota).toFixed(2)}</td><td>${x.id?`<button class="reportPdf btn secondary" data-id="${x.id}" style="width:auto;padding:7px 9px;margin:2px">PDF</button><button class="reportDelete btn secondary" data-id="${x.id}" data-name="${x.aluno}" style="width:auto;padding:7px 9px;margin:2px">Excluir</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="13">Nenhum aluno encontrado para esta turma.</td></tr>';
   renderPowerDashboard(d);
@@ -625,8 +642,7 @@ classSelect.addEventListener('change',async()=>{
   // a foto/resultado anterior ao primeiro aluno da nova turma.
   clearCorrectionSession({clearStudent:true});
   await loadStudents();
-  reportBody.innerHTML='';reportSummary.innerHTML='';diagnosticText.textContent='Carregando provas...';
-  await loadReportExams();await showReport();await loadSiapClasses();
+  await loadSiapClasses();
 });
 
 examName.addEventListener('change',()=>{
@@ -634,9 +650,14 @@ examName.addEventListener('change',()=>{
   // preservado para não atrapalhar a configuração, mas o resultado da foto é descartado.
   clearCorrectionSession({clearStudent:true});
 });
+reportClass.addEventListener('change',async()=>{
+  reportExam.value='';
+  await loadReportExams();
+  await showReport();
+});
 reportExam.addEventListener('change',showReport);
 loadReport.addEventListener('click',showReport);
-exportClassPdf.addEventListener('click',()=>{if(!classSelect.value){alert('Selecione uma turma.');return;}const params=reportExam.value?`?prova_nome=${encodeURIComponent(reportExam.value)}`:'';window.open(`/api/turmas/${classSelect.value}/relatorio/pdf${params}`,'_blank');});
+exportClassPdf.addEventListener('click',()=>{if(!reportClass.value){alert('Selecione uma turma.');return;}const params=reportExam.value?`?prova_nome=${encodeURIComponent(reportExam.value)}`:'';window.open(`/api/turmas/${reportClass.value}/relatorio/pdf${params}`,'_blank');});
 document.querySelector('#exportSavedPdf').addEventListener('click',()=>{if(lastSavedResultId)window.open(`/api/resultados/${lastSavedResultId}/pdf`,'_blank');});
 
 
